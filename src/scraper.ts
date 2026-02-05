@@ -91,25 +91,33 @@ export class Scraper {
     } catch (error) {
       const fallback = await this.findPlaywrightExecutable();
       if (fallback) {
-        console.warn(`Playwright browser not found. Using fallback executable: ${fallback}`);
-        browser = await chromium.launch({ executablePath: fallback });
+        try {
+          console.warn(`Playwright browser not found. Using fallback executable: ${fallback}`);
+          browser = await chromium.launch({ executablePath: fallback });
+        } catch (fallbackError) {
+          console.warn("Fallback Chromium failed. Switching to fetch-only mode.");
+          this.useFetchFallback = true;
+        }
       } else {
-        console.warn("Playwright browser not found. Falling back to system Chrome.");
-        browser = await chromium.launch({ channel: "chrome" });
+        console.warn("Playwright browser not found. Falling back to fetch-only mode.");
+        this.useFetchFallback = true;
       }
     }
-    const context = await browser.newContext({
-      userAgent: this.options.userAgent,
-    });
+
+    const context = browser
+      ? await browser.newContext({
+          userAgent: this.options.userAgent,
+        })
+      : null;
 
     await this.crawler.run((item) => this.processPage(context, item));
-    await context.close();
-    await browser.close();
+    if (context) await context.close();
+    if (browser) await browser.close();
     await this.storage.finalize();
     this.renderProgress(true);
   }
 
-  private async processPage(context: BrowserContext, item: CrawlItem): Promise<void> {
+  private async processPage(context: BrowserContext | null, item: CrawlItem): Promise<void> {
     if (item.depth > 0 && !this.scopeFilter(item.url)) return;
     if (item.depth > this.options.maxDepth) return;
 
@@ -131,7 +139,11 @@ export class Scraper {
 
     let captured: CapturedPage | null = null;
     try {
-      captured = await capturePage(context, item.url, { timeoutMs: this.options.timeoutMs });
+      if (this.useFetchFallback || !context) {
+        captured = await capturePageFetch(item.url, this.options.userAgent, this.options.timeoutMs);
+      } else {
+        captured = await capturePage(context, item.url, { timeoutMs: this.options.timeoutMs });
+      }
     } catch (error) {
       this.storage.recordError({
         url: item.url,
