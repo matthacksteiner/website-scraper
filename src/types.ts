@@ -9,6 +9,8 @@ export interface ScrapeOptions {
   maxPages: number;
   maxDepth: number;
   output: string;
+  singleFile: boolean;
+  stripConsent: boolean;
   respectRobots: boolean;
   delayMs: number;
   concurrency: number;

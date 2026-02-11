@@ -18,6 +18,17 @@ const collect = (value: string, previous: string[]): string[] => {
   return previous.concat([value]);
 };
 
+const formatTimestamp = (date: Date): string => {
+  const pad2 = (value: number) => String(value).padStart(2, "0");
+  const yyyy = date.getFullYear();
+  const mm = pad2(date.getMonth() + 1);
+  const dd = pad2(date.getDate());
+  const hh = pad2(date.getHours());
+  const min = pad2(date.getMinutes());
+  const ss = pad2(date.getSeconds());
+  return `${yyyy}-${mm}-${dd}_${hh}-${min}-${ss}`;
+};
+
 const program = new Command();
 program
   .name("scrape")
@@ -30,6 +41,10 @@ program
   .option("--max-pages <number>", "Maximum pages to crawl", "50")
   .option("--max-depth <number>", "Maximum crawl depth", "2")
   .option("--output <dir>", "Output directory")
+  .option("--single-file", "Inline CSS/JS/images/fonts into each HTML file", true)
+  .option("--no-single-file", "Save HTML that references local assets instead of inlining")
+  .option("--strip-consent", "Remove common cookie/consent overlays", true)
+  .option("--no-strip-consent", "Keep cookie/consent overlays")
   .option("--respect-robots", "Respect robots.txt", true)
   .option("--no-respect-robots", "Ignore robots.txt")
   .option("--delay-ms <number>", "Delay between page fetches", "500")
@@ -131,8 +146,12 @@ const main = async () => {
 
   const url = String(responses.url);
   const parsed = new URL(url);
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-  const defaultOutput = path.resolve(process.cwd(), `scrape-${parsed.hostname}-${timestamp}`);
+  const timestamp = formatTimestamp(new Date());
+  const defaultOutput = path.resolve(
+    process.cwd(),
+    "scraped_sites",
+    `scrape-${parsed.hostname}-${timestamp}`
+  );
 
   const options: ScrapeOptions = {
     url,
@@ -143,6 +162,8 @@ const main = async () => {
     maxPages: parseNumber(opts.maxPages, 50),
     maxDepth: parseNumber(opts.maxDepth, 2),
     output: opts.output ? path.resolve(opts.output) : defaultOutput,
+    singleFile: Boolean(opts.singleFile),
+    stripConsent: Boolean(opts.stripConsent),
     respectRobots: Boolean(opts.respectRobots),
     delayMs: parseNumber(opts.delayMs, 500),
     concurrency: parseNumber(opts.concurrency, 2),

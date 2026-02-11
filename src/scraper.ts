@@ -9,7 +9,7 @@ import { RobotsClient } from "./robots";
 import { inlineHtmlAssets, rewriteHtml } from "./rewrite";
 import { capturePage, CapturedPage } from "./playwright_capture";
 import { Crawler, CrawlItem } from "./crawler";
-import { capturePageFetch } from "./fetch_capture";
+import { captureAssetsForHtml, capturePageFetch } from "./fetch_capture";
 
 class RateLimiter {
   private last = 0;
@@ -115,6 +115,14 @@ export class Scraper {
     if (browser) await browser.close();
     await this.storage.finalize();
     this.renderProgress(true);
+
+    const errors = this.storage.errorCount();
+    if (errors > 0) {
+      console.warn(`Scrape finished with ${errors} error(s). See: ${this.storage.manifestPath}`);
+    }
+    if (this.storage.pageCount() === 0) {
+      throw new Error(`No pages were captured. See: ${this.storage.manifestPath}`);
+    }
   }
 
   private async processPage(context: BrowserContext | null, item: CrawlItem): Promise<void> {
@@ -155,6 +163,32 @@ export class Scraper {
     }
 
     if (!captured) return;
+
+    // Playwright only captures resources that were actually requested during the page load.
+    // For lazy-loaded media, this can miss important assets. We augment by discovering assets
+    // directly from the captured HTML/CSS and fetching any that aren't already captured.
+    if (!this.useFetchFallback && context) {
+      try {
+        const already = new Set<string>();
+        for (const response of captured.responses) {
+          try {
+            already.add(normalizeUrl(response.url));
+          } catch {
+            continue;
+          }
+        }
+        const extra = await captureAssetsForHtml(
+          captured.html,
+          item.url,
+          this.options.userAgent,
+          this.options.timeoutMs,
+          already
+        );
+        captured.responses.push(...extra);
+      } catch {
+        // best-effort
+      }
+    }
 
     const pagePath = this.storage.registerPageMapping(item.url);
 
@@ -199,13 +233,22 @@ export class Scraper {
       }
     }
 
-    let rewrittenHtml = rewriteHtml(captured.html, item.url, pagePath, this.storage.resourceMap);
-    rewrittenHtml = inlineHtmlAssets(
-      rewrittenHtml,
+    let rewrittenHtml = inlineHtmlAssets(
+      captured.html,
       item.url,
       pagePath,
       responseMap,
-      this.storage.resourceMap
+      this.storage.resourceMap,
+      this.options.singleFile
+    );
+    rewrittenHtml = rewriteHtml(
+      rewrittenHtml,
+      item.url,
+      pagePath,
+      this.storage.resourceMap,
+      responseMap,
+      this.options.singleFile,
+      this.options.stripConsent
     );
 
     await this.storage.savePage(
@@ -237,14 +280,19 @@ export class Scraper {
     }
   }
 
-  private getAssetKind(url: string, contentType: string | null): "img" | "css" | null {
+  private getAssetKind(url: string, contentType: string | null): "img" | "css" | "other" | null {
     if (contentType) {
       if (contentType.startsWith("image/")) return "img";
       if (contentType.includes("text/css")) return "css";
+      if (contentType.includes("javascript") || contentType.includes("ecmascript")) return "other";
+      if (contentType.startsWith("font/")) return "other";
+      if (contentType.includes("font")) return "other";
     }
     const lower = url.split("?")[0].toLowerCase();
     if (lower.endsWith(".css")) return "css";
+    if (lower.match(/\.(m?js|cjs)$/)) return "other";
     if (lower.match(/\.(png|jpe?g|gif|webp|svg|avif|ico)$/)) return "img";
+    if (lower.match(/\.(woff2?|ttf|otf|eot)$/)) return "other";
     return null;
   }
 

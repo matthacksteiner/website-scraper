@@ -161,4 +161,8 @@ export class Storage {
   pageCount(): number {
     return this.manifest.pages.length;
   }
+
+  errorCount(): number {
+    return this.manifest.errors.length;
+  }
 }
