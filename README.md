@@ -3,10 +3,10 @@
 ## Quickstart
 
 ```bash
-npm install
-npx playwright install
-npm run build
-node dist/cli.js
+bun install
+bunx playwright install
+bun run build
+bun run start
 ```
 
 You’ll be prompted for a URL and whether to scrape subpages. Output is written to `./scraped_sites/scrape-<domain>-<timestamp>/`.
@@ -18,13 +18,35 @@ By default pages are saved as **single-file static snapshots** (CSS/images/fonts
 When using `--no-single-file`, Chrome blocks many asset loads when opening pages via `file://` (you’ll see CORS errors in the console). Serve the scrape directory over HTTP instead:
 
 ```bash
-npm run build
-node dist/serve.js --dir scraped_sites/scrape-<domain>-<timestamp>
+bun run build
+bun run serve --dir scraped_sites/scrape-<domain>-<timestamp>
 ```
 
 Then open the printed `http://127.0.0.1:4173/` URL in your browser.
 
+To serve the newest scrape output automatically:
+
+```bash
+bun run build
+bun run serve:latest
+```
+
+## Quality Tooling
+
+```bash
+bun run lint
+bun run format:check
+bun run typecheck
+```
+
+Fix formatting automatically with:
+
+```bash
+bun run format
+```
+
 ## Features
+
 - Headless browser rendering (Playwright)
 - Single-file static snapshots (inline CSS/images/fonts, strip consent overlays)
 - Optional subpage crawling with scope controls
@@ -35,10 +57,11 @@ Then open the printed `http://127.0.0.1:4173/` URL in your browser.
 ## Usage
 
 ```bash
-node dist/cli.js --url https://example.com --subpages --scope same-origin
+bun run start --url https://example.com --subpages --scope same-origin
 ```
 
 ### Options
+
 - `--url <url>`
 - `--subpages` / `--no-subpages`
 - `--scope <same-origin|subdomains|custom>`
@@ -56,6 +79,7 @@ node dist/cli.js --url https://example.com --subpages --scope same-origin
 - `--timeout-ms <number>` (default: 30000)
 
 ## Output
+
 ```
 scraped_sites/
   scrape-<domain>-<timestamp>/
@@ -70,6 +94,7 @@ scraped_sites/
 Each page is saved as a single HTML file with inlined CSS/images/fonts when captured. Assets are also downloaded to `assets/` (`assets/img`, `assets/css`, etc).
 
 ## Notes
+
 - In single-file mode, assets are still saved to `assets/` (helps debugging and enables re-postprocessing).
 - If some assets can’t be captured, they remain as absolute `https://...` URLs (page may need network to fully match the live site).
 - Some pages may block scraping or require authentication.

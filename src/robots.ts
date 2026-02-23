@@ -1,4 +1,4 @@
-import robotsParser from "robots-parser";
+import robotsParser from 'robots-parser';
 
 interface RobotsEntry {
   parser: ReturnType<typeof robotsParser>;
@@ -12,20 +12,20 @@ export class RobotsClient {
     const origin = new URL(url).origin;
     let entry = this.cache.get(origin);
     if (!entry) {
-      const robotsUrl = new URL("/robots.txt", origin).toString();
-      let text = "";
+      const robotsUrl = new URL('/robots.txt', origin).toString();
+      let text = '';
       try {
         const res = await fetch(robotsUrl, {
           headers: {
-            "User-Agent": userAgent,
-            "Accept": "text/plain",
+            'User-Agent': userAgent,
+            Accept: 'text/plain',
           },
         });
         if (res.ok) {
           text = await res.text();
         }
       } catch {
-        text = "";
+        text = '';
       }
 
       entry = {
@@ -36,7 +36,7 @@ export class RobotsClient {
     }
 
     const allowed = entry.parser.isAllowed(url, userAgent);
-    if (typeof allowed === "boolean") {
+    if (typeof allowed === 'boolean') {
       return allowed;
     }
     return true;

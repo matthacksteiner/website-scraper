@@ -1,5 +1,5 @@
-import pLimit from "p-limit";
-import { normalizeUrl } from "./url";
+import pLimit from 'p-limit';
+import { normalizeUrl } from './url';
 
 export interface CrawlItem {
   url: string;
@@ -39,7 +39,10 @@ export class Crawler {
   async run(handler: (item: CrawlItem) => Promise<void>): Promise<void> {
     const running: Promise<void>[] = [];
 
-    while ((this.queue.length > 0 || running.length > 0) && this.visited.size < this.options.maxPages) {
+    while (
+      (this.queue.length > 0 || running.length > 0) &&
+      this.visited.size < this.options.maxPages
+    ) {
       while (
         this.queue.length > 0 &&
         running.length < this.options.concurrency &&

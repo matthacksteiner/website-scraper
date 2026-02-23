@@ -1,8 +1,8 @@
-import { load } from "cheerio";
-import { CapturedResponse } from "./types";
-import { normalizeUrl } from "./url";
-import postcss from "postcss";
-import valueParser from "postcss-value-parser";
+import { load } from 'cheerio';
+import { CapturedResponse } from './types';
+import { normalizeUrl } from './url';
+import postcss from 'postcss';
+import valueParser from 'postcss-value-parser';
 
 export interface CapturedPage {
   html: string;
@@ -13,10 +13,10 @@ export interface CapturedPage {
 
 const isSkippable = (value: string): boolean => {
   return (
-    value.startsWith("data:") ||
-    value.startsWith("mailto:") ||
-    value.startsWith("tel:") ||
-    value.startsWith("javascript:")
+    value.startsWith('data:') ||
+    value.startsWith('mailto:') ||
+    value.startsWith('tel:') ||
+    value.startsWith('javascript:')
   );
 };
 
@@ -29,7 +29,10 @@ const resolveUrl = (value: string, baseUrl: string): string | null => {
   }
 };
 
-const collectCssUrls = (css: string, cssUrl: string): { assets: string[]; imports: string[] } => {
+const collectCssUrls = (
+  css: string,
+  cssUrl: string,
+): { assets: string[]; imports: string[] } => {
   const assets = new Set<string>();
   const imports = new Set<string>();
   let root;
@@ -42,9 +45,9 @@ const collectCssUrls = (css: string, cssUrl: string): { assets: string[]; import
   root.walkDecls((decl) => {
     const parsed = valueParser(decl.value);
     parsed.walk((node) => {
-      if (node.type === "function" && node.value === "url") {
+      if (node.type === 'function' && node.value === 'url') {
         const inner = valueParser.stringify(node.nodes).trim();
-        const cleaned = inner.replace(/^['"]|['"]$/g, "");
+        const cleaned = inner.replace(/^['"]|['"]$/g, '');
         const resolved = resolveUrl(cleaned, cssUrl);
         if (resolved) assets.add(resolved);
       }
@@ -52,17 +55,17 @@ const collectCssUrls = (css: string, cssUrl: string): { assets: string[]; import
     });
   });
 
-  root.walkAtRules("import", (rule) => {
+  root.walkAtRules('import', (rule) => {
     const parsed = valueParser(rule.params);
     parsed.walk((node) => {
-      if (node.type === "function" && node.value === "url") {
+      if (node.type === 'function' && node.value === 'url') {
         const inner = valueParser.stringify(node.nodes).trim();
-        const cleaned = inner.replace(/^['"]|['"]$/g, "");
+        const cleaned = inner.replace(/^['"]|['"]$/g, '');
         const resolved = resolveUrl(cleaned, cssUrl);
         if (resolved) imports.add(resolved);
         return false;
       }
-      if (node.type === "string") {
+      if (node.type === 'string') {
         const resolved = resolveUrl(node.value, cssUrl);
         if (resolved) imports.add(resolved);
         return false;
@@ -83,31 +86,33 @@ const collectAssetUrls = (html: string, baseUrl: string): string[] => {
     if (resolved) assets.add(resolved);
   };
 
-  $("link[rel=\"stylesheet\"][href]").each((_, el) => {
-    addUrl($(el).attr("href"));
+  $('link[rel="stylesheet"][href]').each((_, el) => {
+    addUrl($(el).attr('href'));
   });
 
-  $("link[rel=\"preload\"][href], link[rel=\"modulepreload\"][href]").each((_, el) => {
-    addUrl($(el).attr("href"));
+  $('link[rel="preload"][href], link[rel="modulepreload"][href]').each((_, el) => {
+    addUrl($(el).attr('href'));
   });
 
-  $("script[src]").each((_, el) => {
-    addUrl($(el).attr("src"));
+  $('script[src]').each((_, el) => {
+    addUrl($(el).attr('src'));
   });
 
-  $("link[rel~=\"icon\"][href], link[rel=\"apple-touch-icon\"][href], link[rel=\"mask-icon\"][href]").each((_, el) => {
-    addUrl($(el).attr("href"));
+  $(
+    'link[rel~="icon"][href], link[rel="apple-touch-icon"][href], link[rel="mask-icon"][href]',
+  ).each((_, el) => {
+    addUrl($(el).attr('href'));
   });
 
-  $("img[src], source[src], video[poster]").each((_, el) => {
-    const src = $(el).attr("src") || $(el).attr("poster");
+  $('img[src], source[src], video[poster]').each((_, el) => {
+    const src = $(el).attr('src') || $(el).attr('poster');
     addUrl(src);
   });
 
-  $("[srcset]").each((_, el) => {
-    const srcset = $(el).attr("srcset");
+  $('[srcset]').each((_, el) => {
+    const srcset = $(el).attr('srcset');
     if (!srcset) return;
-    srcset.split(",").forEach((candidate) => {
+    srcset.split(',').forEach((candidate) => {
       const trimmed = candidate.trim();
       if (!trimmed) return;
       const [urlPart] = trimmed.split(/\s+/, 2);
@@ -117,18 +122,18 @@ const collectAssetUrls = (html: string, baseUrl: string): string[] => {
 
   // Common lazy-loading/background image attributes.
   const lazyAttrs = [
-    "data-src",
-    "data-lazy",
-    "data-lazy-src",
-    "data-original",
-    "data-bg",
-    "data-bg-src",
-    "data-background",
-    "data-background-image",
-    "data-nectar-img-src",
-    "data-srcset",
-    "data-lazy-srcset",
-    "data-nectar-img-srcset",
+    'data-src',
+    'data-lazy',
+    'data-lazy-src',
+    'data-original',
+    'data-bg',
+    'data-bg-src',
+    'data-background',
+    'data-background-image',
+    'data-nectar-img-src',
+    'data-srcset',
+    'data-lazy-srcset',
+    'data-nectar-img-srcset',
   ];
   lazyAttrs.forEach((attr) => {
     const selector = `[${attr}]`;
@@ -136,14 +141,14 @@ const collectAssetUrls = (html: string, baseUrl: string): string[] => {
   });
 
   // Inline styles can contain url(...) references.
-  $("[style]").each((_, el) => {
-    const style = $(el).attr("style");
+  $('[style]').each((_, el) => {
+    const style = $(el).attr('style');
     if (!style) return;
     const parsed = valueParser(style);
     parsed.walk((node) => {
-      if (node.type === "function" && node.value === "url") {
+      if (node.type === 'function' && node.value === 'url') {
         const inner = valueParser.stringify(node.nodes).trim();
-        const cleaned = inner.replace(/^['"]|['"]$/g, "");
+        const cleaned = inner.replace(/^['"]|['"]$/g, '');
         addUrl(cleaned);
       }
       return false;
@@ -151,8 +156,8 @@ const collectAssetUrls = (html: string, baseUrl: string): string[] => {
   });
 
   // <style> blocks can also contain url(...) and @import resources.
-  $("style").each((_, el) => {
-    const css = $(el).html() || "";
+  $('style').each((_, el) => {
+    const css = $(el).html() || '';
     if (!css.trim()) return;
     const discovered = collectCssUrls(css, baseUrl);
     discovered.assets.forEach((url) => assets.add(url));
@@ -168,15 +173,15 @@ const fetchBinary = async (url: string, userAgent: string, timeoutMs: number) =>
   try {
     const res = await fetch(url, {
       headers: {
-        "User-Agent": userAgent,
-        "Accept": "*/*",
+        'User-Agent': userAgent,
+        Accept: '*/*',
       },
       signal: controller.signal,
     });
     const arrayBuffer = await res.arrayBuffer();
     return {
       status: res.status,
-      contentType: res.headers.get("content-type"),
+      contentType: res.headers.get('content-type'),
       body: Buffer.from(arrayBuffer),
     };
   } finally {
@@ -189,7 +194,7 @@ export const captureAssetsForHtml = async (
   baseUrl: string,
   userAgent: string,
   timeoutMs: number,
-  alreadyCaptured: Set<string> = new Set()
+  alreadyCaptured: Set<string> = new Set(),
 ): Promise<CapturedResponse[]> => {
   const assetUrls = collectAssetUrls(html, baseUrl);
   const responses: CapturedResponse[] = [];
@@ -214,14 +219,15 @@ export const captureAssetsForHtml = async (
         body: result.body,
       });
 
-      const contentType = (result.contentType || "").toLowerCase();
-      const lowerUrl = item.url.split("?")[0].toLowerCase();
-      const isCss = contentType.includes("text/css") || lowerUrl.endsWith(".css");
+      const contentType = (result.contentType || '').toLowerCase();
+      const lowerUrl = item.url.split('?')[0].toLowerCase();
+      const isCss = contentType.includes('text/css') || lowerUrl.endsWith('.css');
       if (isCss && item.cssDepth <= MAX_CSS_IMPORT_DEPTH) {
-        const cssText = result.body.toString("utf8");
+        const cssText = result.body.toString('utf8');
         const discovered = collectCssUrls(cssText, item.url);
         for (const imported of discovered.imports) {
-          if (!seen.has(imported)) queue.push({ url: imported, cssDepth: item.cssDepth + 1 });
+          if (!seen.has(imported))
+            queue.push({ url: imported, cssDepth: item.cssDepth + 1 });
         }
         for (const asset of discovered.assets) {
           if (!seen.has(asset)) queue.push({ url: asset, cssDepth: item.cssDepth });
@@ -238,24 +244,24 @@ export const captureAssetsForHtml = async (
 export const capturePageFetch = async (
   url: string,
   userAgent: string,
-  timeoutMs: number
+  timeoutMs: number,
 ): Promise<CapturedPage> => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  let html = "";
+  let html = '';
   let status: number | null = null;
   let contentType: string | null = null;
 
   try {
     const res = await fetch(url, {
       headers: {
-        "User-Agent": userAgent,
-        "Accept": "text/html,application/xhtml+xml",
+        'User-Agent': userAgent,
+        Accept: 'text/html,application/xhtml+xml',
       },
       signal: controller.signal,
     });
     status = res.status;
-    contentType = res.headers.get("content-type");
+    contentType = res.headers.get('content-type');
     html = await res.text();
   } finally {
     clearTimeout(timeout);

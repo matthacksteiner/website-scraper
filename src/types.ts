@@ -1,4 +1,4 @@
-export type ScopeMode = "same-origin" | "subdomains" | "custom";
+export type ScopeMode = 'same-origin' | 'subdomains' | 'custom';
 
 export interface ScrapeOptions {
   url: string;

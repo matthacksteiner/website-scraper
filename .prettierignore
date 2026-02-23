@@ -1,0 +1,6 @@
+dist
+node_modules
+scraped_sites
+coverage
+*.log
+package-lock.json
