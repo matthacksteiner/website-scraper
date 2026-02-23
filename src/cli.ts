@@ -41,7 +41,7 @@ program
   .option('--max-pages <number>', 'Maximum pages to crawl', '50')
   .option('--max-depth <number>', 'Maximum crawl depth', '2')
   .option('--output <dir>', 'Output directory')
-  .option('--single-file', 'Inline CSS/JS/images/fonts into each HTML file', true)
+  .option('--single-file', 'Inline CSS/JS/images/fonts into each HTML file', false)
   .option(
     '--no-single-file',
     'Save HTML that references local assets instead of inlining',
@@ -58,6 +58,8 @@ program
 const main = async () => {
   const rawArgs = process.argv.slice(2);
   const hasNoSubpages = rawArgs.includes('--no-subpages');
+  const singleFileFlagIndex = rawArgs.lastIndexOf('--single-file');
+  const noSingleFileFlagIndex = rawArgs.lastIndexOf('--no-single-file');
   const filteredArgs = rawArgs.filter((arg) => arg !== '--no-subpages');
   program.parse(['node', 'scrape', ...filteredArgs]);
   const opts = program.opts();
@@ -88,6 +90,28 @@ const main = async () => {
     responses.subpages = answer.subpages;
   } else {
     responses.subpages = opts.subpages;
+  }
+
+  if (singleFileFlagIndex !== -1 || noSingleFileFlagIndex !== -1) {
+    responses.singleFile = singleFileFlagIndex > noSingleFileFlagIndex;
+  } else {
+    const answer = await prompts({
+      type: 'select',
+      name: 'singleFile',
+      message: 'Snapshot mode',
+      choices: [
+        {
+          title: 'No single-file (smaller output, references local assets)',
+          value: false,
+        },
+        {
+          title: 'Single-file (inline CSS/images/fonts into each HTML)',
+          value: true,
+        },
+      ],
+      initial: 0,
+    });
+    responses.singleFile = answer.singleFile ?? false;
   }
 
   let scope: ScopeMode = 'same-origin';
@@ -169,7 +193,7 @@ const main = async () => {
     maxPages: parseNumber(opts.maxPages, 50),
     maxDepth: parseNumber(opts.maxDepth, 2),
     output: opts.output ? path.resolve(opts.output) : defaultOutput,
-    singleFile: Boolean(opts.singleFile),
+    singleFile: Boolean(responses.singleFile),
     stripConsent: Boolean(opts.stripConsent),
     respectRobots: Boolean(opts.respectRobots),
     delayMs: parseNumber(opts.delayMs, 500),

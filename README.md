@@ -9,9 +9,9 @@ bun run build
 bun run start
 ```
 
-You’ll be prompted for a URL and whether to scrape subpages. Output is written to `./scraped_sites/scrape-<domain>-<timestamp>/`.
+You’ll be prompted for a URL, whether to scrape subpages, and snapshot mode. Output is written to `./scraped_sites/scrape-<domain>-<timestamp>/`.
 
-By default pages are saved as **single-file static snapshots** (CSS/images/fonts inlined when captured; executing scripts removed) so you can open `index.html` directly in Chrome without `file://` CORS issues. Interactive widgets (carousels, consent banners, analytics) are not preserved.
+By default pages are saved with references to local assets (`--no-single-file`) for a smaller footprint. In this mode, runtime scripts are removed to keep snapshots stable/editable. Use `--single-file` to inline CSS/images/fonts into each HTML file.
 
 ## Preview (recommended for `--no-single-file`)
 
@@ -48,7 +48,7 @@ bun run format
 ## Features
 
 - Headless browser rendering (Playwright)
-- Single-file static snapshots (inline CSS/images/fonts, strip consent overlays)
+- Asset-linked snapshots by default, with optional single-file inlining
 - Optional subpage crawling with scope controls
 - `robots.txt` compliance and rate limiting
 - Crawl limits for safety
@@ -70,7 +70,7 @@ bun run start --url https://example.com --subpages --scope same-origin
 - `--max-pages <number>` (default: 50)
 - `--max-depth <number>` (default: 2)
 - `--output <dir>`
-- `--single-file` / `--no-single-file` (default: single-file)
+- `--single-file` / `--no-single-file` (default: no-single-file)
 - `--strip-consent` / `--no-strip-consent` (default: strip)
 - `--respect-robots` / `--no-respect-robots`
 - `--delay-ms <number>` (default: 500)
@@ -91,7 +91,7 @@ scraped_sites/
     scrape-log.jsonl
 ```
 
-Each page is saved as a single HTML file with inlined CSS/images/fonts when captured. Assets are also downloaded to `assets/` (`assets/img`, `assets/css`, etc).
+Each page is saved as HTML under `pages/`. By default, HTML references local files in `assets/` (`assets/img`, `assets/css`, etc). In `--single-file` mode, CSS/images/fonts are inlined into each HTML page.
 
 ## Notes
 

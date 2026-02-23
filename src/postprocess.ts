@@ -36,6 +36,10 @@ const main = async (): Promise<void> => {
   }
   for (const asset of manifest.assets) {
     resourceMap.set(normalizeUrl(asset.url), asset.path);
+    const basename = path.basename(asset.path);
+    if (basename && !resourceMap.has(`asset-basename:${basename}`)) {
+      resourceMap.set(`asset-basename:${basename}`, asset.path);
+    }
   }
 
   const responses = new Map<string, { contentType: string | null; body: Buffer }>();

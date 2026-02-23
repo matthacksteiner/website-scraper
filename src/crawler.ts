@@ -15,6 +15,7 @@ export class Crawler {
   private queue: CrawlItem[] = [];
   private visited = new Set<string>();
   private enqueued = new Set<string>();
+  private active = 0;
   private limit;
 
   constructor(private options: CrawlOptions) {
@@ -36,6 +37,18 @@ export class Crawler {
     return this.enqueued.has(normalized) || this.visited.has(normalized);
   }
 
+  pendingCount(): number {
+    return this.queue.length;
+  }
+
+  activeCount(): number {
+    return this.active;
+  }
+
+  discoveredCount(): number {
+    return this.enqueued.size;
+  }
+
   async run(handler: (item: CrawlItem) => Promise<void>): Promise<void> {
     const running: Promise<void>[] = [];
 
@@ -51,7 +64,12 @@ export class Crawler {
         const item = this.queue.shift()!;
         const task = this.limit(async () => {
           this.visited.add(normalizeUrl(item.url));
-          await handler(item);
+          this.active += 1;
+          try {
+            await handler(item);
+          } finally {
+            this.active -= 1;
+          }
         });
         running.push(task);
         task.finally(() => {

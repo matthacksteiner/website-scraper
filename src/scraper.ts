@@ -1,10 +1,11 @@
 import { chromium, BrowserContext } from 'playwright';
 import { load } from 'cheerio';
+import { promises as fs } from 'fs';
 import { ScrapeOptions } from './types';
 import { createScopeFilter, isHttpUrl, normalizeUrl } from './url';
 import { Storage } from './storage';
 import { RobotsClient } from './robots';
-import { inlineHtmlAssets, rewriteHtml } from './rewrite';
+import { inlineHtmlAssets, rewriteCss, rewriteHtml } from './rewrite';
 import { capturePage, CapturedPage } from './playwright_capture';
 import { Crawler, CrawlItem } from './crawler';
 import { captureAssetsForHtml, capturePageFetch } from './fetch_capture';
@@ -62,6 +63,8 @@ const extractLinks = (html: string, baseUrl: string): string[] => {
   return Array.from(links);
 };
 
+const SPINNER_FRAMES = ['-', '\\', '|', '/'] as const;
+
 export class Scraper {
   private storage: Storage;
   private robots: RobotsClient | null;
@@ -69,8 +72,14 @@ export class Scraper {
   private rateLimiter: RateLimiter;
   private crawler: Crawler;
   private processedPages = 0;
-  private progressTarget: number;
+  private completedPages = 0;
+  private failedPages = 0;
   private useFetchFallback = false;
+  private progressTicker: ReturnType<typeof setInterval> | null = null;
+  private lastRenderLength = 0;
+  private lastNonTtyRenderAt = 0;
+  private spinnerIndex = 0;
+  private lastStartedUrl: string | null = null;
 
   constructor(private options: ScrapeOptions) {
     this.storage = new Storage(options.output, options);
@@ -86,7 +95,6 @@ export class Scraper {
       concurrency: options.concurrency,
       maxPages: options.maxPages,
     });
-    this.progressTarget = options.subpages ? options.maxPages : 1;
   }
 
   async run(): Promise<void> {
@@ -111,11 +119,22 @@ export class Scraper {
         })
       : null;
 
-    await this.crawler.run((item) => this.processPage(context, item));
-    if (context) await context.close();
-    if (browser) await browser.close();
+    let crawlError: unknown = null;
+    this.renderProgress(false, true);
+    this.startProgressTicker();
+    try {
+      await this.crawler.run((item) => this.processPage(context, item));
+    } catch (error) {
+      crawlError = error;
+    } finally {
+      this.stopProgressTicker();
+      if (context) await context.close();
+      if (browser) await browser.close();
+      this.renderProgress(true, true);
+    }
+    if (crawlError) throw crawlError;
+
     await this.storage.finalize();
-    this.renderProgress(true);
 
     const errors = this.storage.errorCount();
     if (errors > 0) {
@@ -134,179 +153,278 @@ export class Scraper {
   ): Promise<void> {
     if (item.depth > 0 && !this.scopeFilter(item.url)) return;
     if (item.depth > this.options.maxDepth) return;
+    this.markPageStarted(item.url);
+    try {
+      if (this.robots) {
+        const allowed = await this.robots.canFetch(item.url, this.options.userAgent);
+        if (!allowed) {
+          this.failedPages += 1;
+          this.storage.recordError({
+            url: item.url,
+            error: 'Blocked by robots.txt',
+            phase: 'robots',
+            timestamp: new Date().toISOString(),
+          });
+          return;
+        }
+      }
 
-    if (this.robots) {
-      const allowed = await this.robots.canFetch(item.url, this.options.userAgent);
-      if (!allowed) {
+      await this.rateLimiter.wait();
+      await this.storage.logEvent({
+        type: 'page-start',
+        url: item.url,
+        depth: item.depth,
+      });
+
+      let captured: CapturedPage | null = null;
+      try {
+        if (this.useFetchFallback || !context) {
+          captured = await capturePageFetch(
+            item.url,
+            this.options.userAgent,
+            this.options.timeoutMs,
+          );
+        } else {
+          captured = await capturePage(context, item.url, {
+            timeoutMs: this.options.timeoutMs,
+          });
+        }
+      } catch (error) {
+        this.failedPages += 1;
         this.storage.recordError({
           url: item.url,
-          error: 'Blocked by robots.txt',
-          phase: 'robots',
+          error: (error as Error).message,
+          phase: 'navigation',
           timestamp: new Date().toISOString(),
         });
         return;
       }
-    }
 
-    await this.rateLimiter.wait();
-    await this.storage.logEvent({
-      type: 'page-start',
-      url: item.url,
-      depth: item.depth,
-    });
+      if (!captured) {
+        this.failedPages += 1;
+        return;
+      }
 
-    let captured: CapturedPage | null = null;
-    try {
-      if (this.useFetchFallback || !context) {
-        captured = await capturePageFetch(
-          item.url,
-          this.options.userAgent,
-          this.options.timeoutMs,
-        );
-      } else {
-        captured = await capturePage(context, item.url, {
-          timeoutMs: this.options.timeoutMs,
+      // Playwright only captures resources that were actually requested during the page load.
+      // For lazy-loaded media, this can miss important assets. We augment by discovering assets
+      // directly from the captured HTML/CSS and fetching any that aren't already captured.
+      if (!this.useFetchFallback && context) {
+        try {
+          const already = new Set<string>();
+          for (const response of captured.responses) {
+            try {
+              const contentType = (response.contentType || '').toLowerCase();
+              const lowerUrl = response.url.split('?')[0].toLowerCase();
+              const isCss =
+                contentType.includes('text/css') || lowerUrl.endsWith('.css');
+              // Keep CSS out of "already captured" so we still parse it for nested assets
+              // (fonts, images, @imports) during the extra fetch pass.
+              if (!isCss) {
+                already.add(normalizeUrl(response.url));
+              }
+            } catch {
+              continue;
+            }
+          }
+          const extra = await captureAssetsForHtml(
+            captured.html,
+            item.url,
+            this.options.userAgent,
+            this.options.timeoutMs,
+            already,
+          );
+          captured.responses.push(...extra);
+        } catch {
+          // best-effort
+        }
+      }
+
+      const pagePath = this.storage.registerPageMapping(item.url);
+
+      const responseMap = new Map<string, { contentType: string | null; body: Buffer }>();
+      for (const response of captured.responses) {
+        responseMap.set(normalizeUrl(response.url), {
+          contentType: response.contentType,
+          body: response.body,
         });
       }
-    } catch (error) {
-      this.storage.recordError({
+
+      const savedCssAssets = new Map<string, string>();
+      for (const response of captured.responses) {
+        const kind = this.getAssetKind(response.url, response.contentType);
+        if (!kind) continue;
+        try {
+          const asset = await this.storage.saveAsset(
+            response.url,
+            response.body,
+            response.contentType,
+            kind,
+          );
+          await this.storage.logEvent({
+            type: 'asset-saved',
+            url: response.url,
+            path: asset.path,
+          });
+          if (kind === 'css') {
+            savedCssAssets.set(asset.path, normalizeUrl(response.url));
+          }
+        } catch (error) {
+          this.storage.recordError({
+            url: response.url,
+            error: (error as Error).message,
+            phase: 'asset-save',
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }
+
+      if (!this.options.singleFile) {
+        for (const [cssPath, cssUrl] of savedCssAssets.entries()) {
+          try {
+            const cssBuffer =
+              responseMap.get(cssUrl)?.body ?? (await fs.readFile(cssPath));
+            const rewrittenCss = rewriteCss(
+              cssBuffer.toString('utf8'),
+              cssUrl,
+              cssPath,
+              this.storage.resourceMap,
+              responseMap,
+              false,
+            );
+            await fs.writeFile(cssPath, rewrittenCss, 'utf8');
+          } catch (error) {
+            this.storage.recordError({
+              url: cssUrl,
+              error: (error as Error).message,
+              phase: 'css-rewrite',
+              timestamp: new Date().toISOString(),
+            });
+          }
+        }
+      }
+
+      if (this.options.subpages) {
+        const links = extractLinks(captured.html, item.url);
+        for (const link of links) {
+          if (!this.scopeFilter(link)) {
+            continue;
+          }
+          const nextDepth = item.depth + 1;
+          if (nextDepth > this.options.maxDepth) {
+            continue;
+          }
+          const added = this.crawler.enqueue(link, nextDepth);
+          if (added) {
+            this.storage.registerPageMapping(normalizeUrl(link));
+          }
+        }
+      }
+
+      let rewrittenHtml = inlineHtmlAssets(
+        captured.html,
+        item.url,
+        pagePath,
+        responseMap,
+        this.storage.resourceMap,
+        this.options.singleFile,
+      );
+      rewrittenHtml = rewriteHtml(
+        rewrittenHtml,
+        item.url,
+        pagePath,
+        this.storage.resourceMap,
+        responseMap,
+        this.options.singleFile,
+        this.options.stripConsent,
+      );
+
+      await this.storage.savePage(
+        {
+          url: item.url,
+          path: pagePath,
+          depth: item.depth,
+          status: captured.status,
+          contentType: captured.contentType,
+          timestamp: new Date().toISOString(),
+        },
+        rewrittenHtml,
+      );
+
+      this.processedPages += 1;
+
+      await this.storage.logEvent({
+        type: 'page-finished',
         url: item.url,
-        error: (error as Error).message,
-        phase: 'navigation',
-        timestamp: new Date().toISOString(),
+        depth: item.depth,
       });
+    } finally {
+      this.markPageFinished();
+    }
+  }
+
+  private startProgressTicker(): void {
+    this.stopProgressTicker();
+    this.progressTicker = setInterval(() => {
+      this.renderProgress(false);
+    }, 1000);
+  }
+
+  private stopProgressTicker(): void {
+    if (!this.progressTicker) return;
+    clearInterval(this.progressTicker);
+    this.progressTicker = null;
+  }
+
+  private markPageStarted(url: string): void {
+    this.lastStartedUrl = url;
+    this.renderProgress(false, true);
+  }
+
+  private markPageFinished(): void {
+    this.completedPages += 1;
+    this.renderProgress(false, true);
+  }
+
+  private renderProgress(done = false, force = false): void {
+    const discovered = this.options.subpages
+      ? Math.min(this.crawler.discoveredCount(), this.options.maxPages)
+      : 1;
+    const completed = Math.min(this.completedPages, this.options.maxPages);
+    const spinner = done
+      ? 'done'
+      : SPINNER_FRAMES[this.spinnerIndex % SPINNER_FRAMES.length];
+    if (!done) {
+      this.spinnerIndex = (this.spinnerIndex + 1) % SPINNER_FRAMES.length;
+    }
+    const summary = this.options.subpages
+      ? `${completed}/${discovered} pages (max ${this.options.maxPages})`
+      : `${completed}/1 pages`;
+    const counts = `ok:${this.processedPages} failed:${this.failedPages} active:${this.crawler.activeCount()} queued:${this.crawler.pendingCount()}`;
+    const current = this.lastStartedUrl
+      ? ` | current:${this.truncateUrl(this.lastStartedUrl)}`
+      : '';
+    const message = `${done ? 'Progress:' : `[${spinner}]`} ${summary} | ${counts}${current}`;
+
+    if (process.stdout.isTTY) {
+      const padded = message.padEnd(this.lastRenderLength, ' ');
+      process.stdout.write(`\r${padded}${done ? '\n' : ''}`);
+      this.lastRenderLength = message.length;
       return;
     }
 
-    if (!captured) return;
-
-    // Playwright only captures resources that were actually requested during the page load.
-    // For lazy-loaded media, this can miss important assets. We augment by discovering assets
-    // directly from the captured HTML/CSS and fetching any that aren't already captured.
-    if (!this.useFetchFallback && context) {
-      try {
-        const already = new Set<string>();
-        for (const response of captured.responses) {
-          try {
-            already.add(normalizeUrl(response.url));
-          } catch {
-            continue;
-          }
-        }
-        const extra = await captureAssetsForHtml(
-          captured.html,
-          item.url,
-          this.options.userAgent,
-          this.options.timeoutMs,
-          already,
-        );
-        captured.responses.push(...extra);
-      } catch {
-        // best-effort
-      }
+    const now = Date.now();
+    if (!done && !force && now - this.lastNonTtyRenderAt < 5000) {
+      return;
     }
-
-    const pagePath = this.storage.registerPageMapping(item.url);
-
-    const responseMap = new Map<string, { contentType: string | null; body: Buffer }>();
-    for (const response of captured.responses) {
-      responseMap.set(normalizeUrl(response.url), {
-        contentType: response.contentType,
-        body: response.body,
-      });
-    }
-
-    for (const response of captured.responses) {
-      const kind = this.getAssetKind(response.url, response.contentType);
-      if (!kind) continue;
-      try {
-        const asset = await this.storage.saveAsset(
-          response.url,
-          response.body,
-          response.contentType,
-          kind,
-        );
-        await this.storage.logEvent({
-          type: 'asset-saved',
-          url: response.url,
-          path: asset.path,
-        });
-      } catch (error) {
-        this.storage.recordError({
-          url: response.url,
-          error: (error as Error).message,
-          phase: 'asset-save',
-          timestamp: new Date().toISOString(),
-        });
-      }
-    }
-
-    if (this.options.subpages) {
-      const links = extractLinks(captured.html, item.url);
-      for (const link of links) {
-        if (!this.scopeFilter(link)) {
-          continue;
-        }
-        const nextDepth = item.depth + 1;
-        if (nextDepth > this.options.maxDepth) {
-          continue;
-        }
-        const added = this.crawler.enqueue(link, nextDepth);
-        if (added) {
-          this.storage.registerPageMapping(normalizeUrl(link));
-        }
-      }
-    }
-
-    let rewrittenHtml = inlineHtmlAssets(
-      captured.html,
-      item.url,
-      pagePath,
-      responseMap,
-      this.storage.resourceMap,
-      this.options.singleFile,
-    );
-    rewrittenHtml = rewriteHtml(
-      rewrittenHtml,
-      item.url,
-      pagePath,
-      this.storage.resourceMap,
-      responseMap,
-      this.options.singleFile,
-      this.options.stripConsent,
-    );
-
-    await this.storage.savePage(
-      {
-        url: item.url,
-        path: pagePath,
-        depth: item.depth,
-        status: captured.status,
-        contentType: captured.contentType,
-        timestamp: new Date().toISOString(),
-      },
-      rewrittenHtml,
-    );
-
-    this.processedPages += 1;
-    this.renderProgress();
-
-    await this.storage.logEvent({
-      type: 'page-finished',
-      url: item.url,
-      depth: item.depth,
-    });
-  }
-
-  private renderProgress(done = false): void {
-    const total = this.progressTarget;
-    const current = Math.min(this.processedPages, total);
-    const message = `Progress: ${current}/${total} pages`;
-    if (process.stdout.isTTY) {
-      process.stdout.write(`\r${message}${done ? '\n' : ''}`);
-    } else if (done) {
+    this.lastNonTtyRenderAt = now;
+    if (done || force || !process.stdout.isTTY) {
       console.log(message);
     }
+  }
+
+  private truncateUrl(url: string, maxLength = 72): string {
+    if (url.length <= maxLength) return url;
+    return `${url.slice(0, maxLength - 3)}...`;
   }
 
   private getAssetKind(

@@ -110,6 +110,22 @@ const tryGetAssetBody = (
   }
 };
 
+const resolveLocalPath = (
+  resolvedUrl: string,
+  resourceMap: Map<string, string>,
+): string | undefined => {
+  const direct = resourceMap.get(resolvedUrl);
+  if (direct) return direct;
+  try {
+    const parsed = new URL(resolvedUrl);
+    const basename = path.basename(parsed.pathname);
+    if (!basename) return undefined;
+    return resourceMap.get(`asset-basename:${basename}`);
+  } catch {
+    return undefined;
+  }
+};
+
 export const rewriteCss = (
   css: string,
   cssUrl: string,
@@ -119,8 +135,6 @@ export const rewriteCss = (
   singleFile?: boolean,
   importDepth = 0,
 ): string => {
-  const root = postcss.parse(css);
-
   const inlineResolvedUrl = (resolvedUrl: string): string | null => {
     const asset = tryGetAssetBody(resolvedUrl, responses, resourceMap);
     if (!asset) return null;
@@ -133,11 +147,43 @@ export const rewriteCss = (
     if (singleFile) {
       return inlineResolvedUrl(resolvedUrl) ?? resolvedUrl;
     }
-    const localPath = resourceMap.get(resolvedUrl);
+    const localPath = resolveLocalPath(resolvedUrl, resourceMap);
     if (!localPath) return resolvedUrl;
     const relative = toPosix(path.relative(path.dirname(cssPath), localPath));
     return relative || './';
   };
+
+  const rewriteFallbackUrl = (rawValue: string): string => {
+    const cleaned = rawValue.trim().replace(/^['"]|['"]$/g, '');
+    if (!cleaned) return cleaned;
+    if (singleFile) {
+      const inlinedLocal = tryInlineLocalRelative(cleaned, cssPath);
+      if (inlinedLocal) return inlinedLocal;
+    }
+    const { urlPart, fragment } = splitUrlAndFragment(cleaned);
+    const resolved = resolveUrl(urlPart, cssUrl);
+    if (!resolved) return cleaned;
+    return `${rewriteResolvedUrl(resolved)}${fragment}`;
+  };
+
+  let root;
+  try {
+    root = postcss.parse(css);
+  } catch {
+    let fallback = css.replace(
+      /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi,
+      (_full, _quote, value) => `url(${rewriteFallbackUrl(String(value))})`,
+    );
+    fallback = fallback.replace(
+      /@import\s+url\(\s*(['"]?)([^'")]+)\1\s*\)/gi,
+      (_full, _quote, value) => `@import url(${rewriteFallbackUrl(String(value))})`,
+    );
+    fallback = fallback.replace(
+      /@import\s+(['"])([^'"]+)\1/gi,
+      (_full, quote, value) => `@import ${quote}${rewriteFallbackUrl(String(value))}${quote}`,
+    );
+    return fallback;
+  }
 
   root.walkDecls((decl) => {
     const parsed = valueParser(decl.value);
@@ -279,7 +325,7 @@ const rewriteInlineStyleValue = (
           ),
         ];
       } else {
-        const localPath = resourceMap.get(resolved);
+        const localPath = resolveLocalPath(resolved, resourceMap);
         if (localPath) {
           const relative = toPosix(path.relative(path.dirname(pagePath), localPath));
           node.nodes = [makeWordNode(`${relative || './'}${fragment}`)];
@@ -441,7 +487,7 @@ export const rewriteHtml = (
       }
     }
 
-    const localPath = resourceMap.get(resolved);
+    const localPath = resolveLocalPath(resolved, resourceMap);
     if (localPath) {
       const relative = toPosix(path.relative(path.dirname(pagePath), localPath));
       $(element).attr(attr, `${relative || './'}${fragment}`);
@@ -569,7 +615,7 @@ export const rewriteHtml = (
           const dataUrl = toDataUrl(asset.body, getMimeType(asset.contentType, resolved));
           return descriptor ? `${dataUrl} ${descriptor}` : dataUrl;
         }
-        const localPath = resourceMap.get(resolved);
+        const localPath = resolveLocalPath(resolved, resourceMap);
         if (!localPath) return trimmed;
         const relative = toPosix(path.relative(path.dirname(pagePath), localPath));
         return descriptor ? `${relative} ${descriptor}` : relative;
@@ -672,6 +718,17 @@ export const rewriteHtml = (
     // Keep scripts in single-file mode so interactive navigation (e.g. hover menus) can
     // behave closer to the live site when served over HTTP.
     $('style[data-scrape-slider-fallback]').remove();
+  } else {
+    // For editable design snapshots, remove runtime scripts and preloads that trigger
+    // API/widget requests and noisy console errors in offline/local serving.
+    $('script').each((_, element) => {
+      const type = String($(element).attr('type') || '').trim().toLowerCase();
+      if (type === 'application/ld+json') return;
+      $(element).remove();
+    });
+    $(
+      'link[rel="modulepreload"], link[rel="preload"], link[rel="prefetch"], link[rel="preconnect"], link[rel="dns-prefetch"]',
+    ).remove();
   }
 
   return $.html();

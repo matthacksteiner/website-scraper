@@ -39,7 +39,23 @@ const collectCssUrls = (
   try {
     root = postcss.parse(css);
   } catch {
-    return { assets: [], imports: [] };
+    const urlRegex = /url\(\s*(['"]?)([^'")]+)\1\s*\)/gi;
+    let match: RegExpExecArray | null;
+    while ((match = urlRegex.exec(css)) !== null) {
+      const resolved = resolveUrl(match[2], cssUrl);
+      if (resolved) assets.add(resolved);
+    }
+    const importUrlRegex = /@import\s+url\(\s*(['"]?)([^'")]+)\1\s*\)/gi;
+    while ((match = importUrlRegex.exec(css)) !== null) {
+      const resolved = resolveUrl(match[2], cssUrl);
+      if (resolved) imports.add(resolved);
+    }
+    const importStringRegex = /@import\s+(['"])([^'"]+)\1/gi;
+    while ((match = importStringRegex.exec(css)) !== null) {
+      const resolved = resolveUrl(match[2], cssUrl);
+      if (resolved) imports.add(resolved);
+    }
+    return { assets: Array.from(assets), imports: Array.from(imports) };
   }
 
   root.walkDecls((decl) => {

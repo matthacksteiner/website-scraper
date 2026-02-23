@@ -63,6 +63,10 @@ export class Storage {
   registerAssetMapping(url: string, localPath: string): void {
     const normalized = normalizeUrl(url);
     this.resourceMap.set(normalized, localPath);
+    const basename = path.basename(localPath);
+    if (basename && !this.resourceMap.has(`asset-basename:${basename}`)) {
+      this.resourceMap.set(`asset-basename:${basename}`, localPath);
+    }
   }
 
   getResourcePath(url: string): string | undefined {
