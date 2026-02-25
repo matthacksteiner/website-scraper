@@ -83,7 +83,8 @@ bun run start --url https://example.com --subpages --scope same-origin
 ```
 scraped_sites/
   scrape-<domain>-<timestamp>/
-    pages/<path>/index.html
+    index.html
+    <subpage>/index.html
     assets/
       img/
       css/
@@ -91,7 +92,7 @@ scraped_sites/
     scrape-log.jsonl
 ```
 
-Each page is saved as HTML under `pages/`. By default, HTML references local files in `assets/` (`assets/img`, `assets/css`, etc). In `--single-file` mode, CSS/images/fonts are inlined into each HTML page.
+Root page HTML is saved as `index.html` in the output directory, with `assets/` beside it. Subpages are saved under their own folders as `<subpage>/index.html`. By default, HTML references local files in `assets/` (`assets/img`, `assets/css`, etc). In `--single-file` mode, CSS/images/fonts are inlined into each HTML page.
 
 ## Notes
 

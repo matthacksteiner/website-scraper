@@ -56,6 +56,14 @@ const resolveLatestScrapeDir = (scrapesDir: string): string => {
 };
 
 const resolveDefaultPageHtml = async (root: string): Promise<string | null> => {
+  const topLevelIndex = path.join(root, 'index.html');
+  try {
+    await fs.access(topLevelIndex);
+    return topLevelIndex;
+  } catch {
+    // Fall back to legacy pages/ layout.
+  }
+
   const pagesDir = path.join(root, 'pages');
 
   let hostDirs: string[];
@@ -330,6 +338,13 @@ const renderDirectoryListing = async (
 
   const recommended: { href: string; name: string }[] = [];
   if (rel === '.' || rel === '') {
+    try {
+      await fs.access(path.join(root, 'index.html'));
+      recommended.push({ href: '/index.html', name: 'index.html' });
+    } catch {
+      // ignore
+    }
+
     const pagesDir = path.join(root, 'pages');
     try {
       const hostDirs = (await fs.readdir(pagesDir, { withFileTypes: true }))

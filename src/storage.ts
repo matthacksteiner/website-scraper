@@ -24,12 +24,13 @@ export class Storage {
   readonly manifestPath: string;
   readonly logPath: string;
   readonly resourceMap = new Map<string, string>();
+  private readonly primaryHost: string | null;
   private contentHashMap = new Map<string, string>();
   private manifest: Manifest;
 
   constructor(outputDir: string, options: ScrapeOptions) {
     this.outputDir = outputDir;
-    this.pagesDir = path.join(outputDir, 'pages');
+    this.pagesDir = outputDir;
     this.assetsDir = path.join(outputDir, 'assets');
     this.assetsImgDir = path.join(this.assetsDir, 'img');
     this.assetsCssDir = path.join(this.assetsDir, 'css');
@@ -42,6 +43,11 @@ export class Storage {
       assets: [],
       errors: [],
     };
+    try {
+      this.primaryHost = new URL(options.url).hostname.toLowerCase();
+    } catch {
+      this.primaryHost = null;
+    }
   }
 
   async init(): Promise<void> {
@@ -78,19 +84,23 @@ export class Storage {
     const parsed = new URL(url);
     const host = sanitizeSegment(parsed.hostname);
     let pathname = parsed.pathname || '/';
-    if (pathname === '/') {
-      pathname = 'root';
-    }
-    if (pathname.endsWith('/')) {
+    if (pathname.length > 1 && pathname.endsWith('/')) {
       pathname = pathname.slice(0, -1);
     }
-    const safePath = pathname
+    const pathSegments = pathname
       .split('/')
       .filter(Boolean)
-      .map(sanitizeSegment)
-      .join(path.sep);
+      .map(sanitizeSegment);
     const querySuffix = parsed.search ? `__q_${hashValue(parsed.search)}` : '';
-    const dir = path.join(this.pagesDir, host, `${safePath}${querySuffix}`);
+    const dirSegments: string[] = [];
+    if (this.primaryHost && parsed.hostname.toLowerCase() !== this.primaryHost) {
+      dirSegments.push(host);
+    }
+    dirSegments.push(...pathSegments);
+    if (querySuffix) {
+      dirSegments.push(querySuffix);
+    }
+    const dir = dirSegments.length > 0 ? path.join(this.pagesDir, ...dirSegments) : this.pagesDir;
     return path.join(dir, 'index.html');
   }
 
