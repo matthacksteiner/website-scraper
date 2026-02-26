@@ -24,7 +24,7 @@
     "serve": "bun dist/serve.js",
     "serve:latest": "bun dist/serve.js --latest",
     "postprocess": "bun dist/postprocess.js",
-    "test": "echo \"No tests configured\""
+    "test": "bun test"
   },
   "dependencies": {
     "cheerio": "^1.0.0-rc.12",

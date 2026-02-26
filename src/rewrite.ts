@@ -180,7 +180,8 @@ export const rewriteCss = (
     );
     fallback = fallback.replace(
       /@import\s+(['"])([^'"]+)\1/gi,
-      (_full, quote, value) => `@import ${quote}${rewriteFallbackUrl(String(value))}${quote}`,
+      (_full, quote, value) =>
+        `@import ${quote}${rewriteFallbackUrl(String(value))}${quote}`,
     );
     return fallback;
   }
@@ -722,7 +723,9 @@ export const rewriteHtml = (
     // For editable design snapshots, remove runtime scripts and preloads that trigger
     // API/widget requests and noisy console errors in offline/local serving.
     $('script').each((_, element) => {
-      const type = String($(element).attr('type') || '').trim().toLowerCase();
+      const type = String($(element).attr('type') || '')
+        .trim()
+        .toLowerCase();
       if (type === 'application/ld+json') return;
       $(element).remove();
     });

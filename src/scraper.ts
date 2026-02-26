@@ -215,8 +215,7 @@ export class Scraper {
             try {
               const contentType = (response.contentType || '').toLowerCase();
               const lowerUrl = response.url.split('?')[0].toLowerCase();
-              const isCss =
-                contentType.includes('text/css') || lowerUrl.endsWith('.css');
+              const isCss = contentType.includes('text/css') || lowerUrl.endsWith('.css');
               // Keep CSS out of "already captured" so we still parse it for nested assets
               // (fonts, images, @imports) during the extra fetch pass.
               if (!isCss) {

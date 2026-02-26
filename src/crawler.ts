@@ -19,7 +19,14 @@ export class Crawler {
   private limit;
 
   constructor(private options: CrawlOptions) {
-    this.limit = pLimit(options.concurrency);
+    const concurrency = Number.isFinite(options.concurrency)
+      ? Math.max(1, Math.floor(options.concurrency))
+      : 1;
+    const maxPages = Number.isFinite(options.maxPages)
+      ? Math.max(1, Math.floor(options.maxPages))
+      : 1;
+    this.options = { concurrency, maxPages };
+    this.limit = pLimit(this.options.concurrency);
   }
 
   enqueue(url: string, depth: number): boolean {

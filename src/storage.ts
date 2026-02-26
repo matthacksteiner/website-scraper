@@ -89,10 +89,7 @@ export class Storage {
     if (pathname.length > 1 && pathname.endsWith('/')) {
       pathname = pathname.slice(0, -1);
     }
-    const pathSegments = pathname
-      .split('/')
-      .filter(Boolean)
-      .map(sanitizeSegment);
+    const pathSegments = pathname.split('/').filter(Boolean).map(sanitizeSegment);
     const querySuffix = parsed.search ? `__q_${hashValue(parsed.search)}` : '';
     const dirSegments: string[] = [];
     if (this.primaryHost && parsed.hostname.toLowerCase() !== this.primaryHost) {
@@ -102,7 +99,8 @@ export class Storage {
     if (querySuffix) {
       dirSegments.push(querySuffix);
     }
-    const dir = dirSegments.length > 0 ? path.join(this.pagesDir, ...dirSegments) : this.pagesDir;
+    const dir =
+      dirSegments.length > 0 ? path.join(this.pagesDir, ...dirSegments) : this.pagesDir;
     return path.join(dir, 'index.html');
   }
 
@@ -137,7 +135,7 @@ export class Storage {
       extension = ext || '';
     }
     const filename = `${hash}${extension}`;
-    
+
     // Create assets directory inside the current page directory
     const pageAssetsDir = path.join(this.currentPageDir, 'assets');
     const baseDir =
@@ -146,7 +144,7 @@ export class Storage {
         : kind === 'css'
           ? path.join(pageAssetsDir, 'css')
           : pageAssetsDir;
-    
+
     await fs.mkdir(baseDir, { recursive: true });
     const localPath = path.join(baseDir, filename);
 

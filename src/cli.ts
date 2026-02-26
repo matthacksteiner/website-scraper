@@ -3,16 +3,11 @@ import { Command } from 'commander';
 import prompts from 'prompts';
 import path from 'path';
 import { Scraper } from './scraper';
+import { parseIntOption } from './options';
 import { ScrapeOptions, ScopeMode } from './types';
 
 const DEFAULT_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-
-const parseNumber = (value: string | undefined, fallback: number): number => {
-  if (!value) return fallback;
-  const parsed = Number.parseInt(value, 10);
-  return Number.isFinite(parsed) ? parsed : fallback;
-};
 
 const collect = (value: string, previous: string[]): string[] => {
   return previous.concat([value]);
@@ -190,16 +185,16 @@ const main = async () => {
     scope,
     include,
     exclude,
-    maxPages: parseNumber(opts.maxPages, 50),
-    maxDepth: parseNumber(opts.maxDepth, 2),
+    maxPages: parseIntOption(opts.maxPages, 50, 1),
+    maxDepth: parseIntOption(opts.maxDepth, 2, 0),
     output: opts.output ? path.resolve(opts.output) : defaultOutput,
     singleFile: Boolean(responses.singleFile),
     stripConsent: Boolean(opts.stripConsent),
     respectRobots: Boolean(opts.respectRobots),
-    delayMs: parseNumber(opts.delayMs, 500),
-    concurrency: parseNumber(opts.concurrency, 2),
+    delayMs: parseIntOption(opts.delayMs, 500, 0),
+    concurrency: parseIntOption(opts.concurrency, 2, 1),
     userAgent: opts.userAgent || DEFAULT_USER_AGENT,
-    timeoutMs: parseNumber(opts.timeoutMs, 30000),
+    timeoutMs: parseIntOption(opts.timeoutMs, 30000, 1),
   };
 
   const scraper = new Scraper(options);

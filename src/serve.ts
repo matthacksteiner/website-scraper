@@ -352,7 +352,10 @@ const renderDirectoryListing = async (
     // Try new structure: pages/index.html
     try {
       await fs.access(path.join(root, 'pages', 'index.html'));
-      recommended.push({ href: '/pages/index.html', name: 'pages/index.html (root page)' });
+      recommended.push({
+        href: '/pages/index.html',
+        name: 'pages/index.html (root page)',
+      });
     } catch {
       // ignore
     }

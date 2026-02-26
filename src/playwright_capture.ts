@@ -263,6 +263,17 @@ export const capturePage = async (
   const responses: CapturedResponse[] = [];
   const seenResponses = new Set<string>();
 
+  // Must be installed before first navigation so it applies to initial document scripts.
+  try {
+    await page.addInitScript(() => {
+      Object.defineProperty(navigator, 'webdriver', {
+        get: () => undefined,
+      });
+    });
+  } catch {
+    // ignore
+  }
+
   page.on('response', async (response) => {
     try {
       const responseUrl = response.url();
@@ -291,24 +302,11 @@ export const capturePage = async (
     }
   });
 
-  const mainResponse = await page.goto(url, {
+  let mainResponse = await page.goto(url, {
     waitUntil: 'domcontentloaded',
     timeout: options.timeoutMs,
   });
-  const initialHtml = mainResponse
-    ? await mainResponse.text().catch(() => null)
-    : null;
-
-  // Mask webdriver
-  try {
-    await page.addInitScript(() => {
-      Object.defineProperty(navigator, 'webdriver', {
-        get: () => undefined,
-      });
-    });
-  } catch {
-    // ignore
-  }
+  const initialHtml = mainResponse ? await mainResponse.text().catch(() => null) : null;
 
   // Best-effort consent dismissal and lazy-load triggering to improve offline completeness.
   await tryDismissConsent(page);
@@ -358,10 +356,13 @@ export const capturePage = async (
   // Interactions above are useful for triggering lazy asset requests, but they can mutate
   // the DOM (e.g. opening/augmenting menus). Re-load once and snapshot a clean state.
   try {
-    await page.goto(url, {
+    const reloadedMainResponse = await page.goto(url, {
       waitUntil: 'domcontentloaded',
       timeout: options.timeoutMs,
     });
+    if (reloadedMainResponse) {
+      mainResponse = reloadedMainResponse;
+    }
     await tryDismissConsent(page);
     await materializeLazyDom(page);
     try {
@@ -373,7 +374,7 @@ export const capturePage = async (
     // best-effort: keep current DOM if reload fails
   }
 
-  const html = initialHtml ?? (await page.content());
+  const html = (await page.content().catch(() => null)) ?? initialHtml ?? '';
   const status = mainResponse ? mainResponse.status() : null;
   const contentType = mainResponse
     ? mainResponse.headers()['content-type'] || null
