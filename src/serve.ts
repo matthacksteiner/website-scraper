@@ -56,14 +56,25 @@ const resolveLatestScrapeDir = (scrapesDir: string): string => {
 };
 
 const resolveDefaultPageHtml = async (root: string): Promise<string | null> => {
+  // First try pages/index.html (new structure)
+  const pagesIndex = path.join(root, 'pages', 'index.html');
+  try {
+    await fs.access(pagesIndex);
+    return pagesIndex;
+  } catch {
+    // Continue to next option
+  }
+
+  // Then try top-level index.html (legacy)
   const topLevelIndex = path.join(root, 'index.html');
   try {
     await fs.access(topLevelIndex);
     return topLevelIndex;
   } catch {
-    // Fall back to legacy pages/ layout.
+    // Continue to next option
   }
 
+  // Finally try old pages/<host>/root/index.html structure
   const pagesDir = path.join(root, 'pages');
 
   let hostDirs: string[];
@@ -338,6 +349,15 @@ const renderDirectoryListing = async (
 
   const recommended: { href: string; name: string }[] = [];
   if (rel === '.' || rel === '') {
+    // Try new structure: pages/index.html
+    try {
+      await fs.access(path.join(root, 'pages', 'index.html'));
+      recommended.push({ href: '/pages/index.html', name: 'pages/index.html (root page)' });
+    } catch {
+      // ignore
+    }
+
+    // Try legacy structure: index.html at root
     try {
       await fs.access(path.join(root, 'index.html'));
       recommended.push({ href: '/index.html', name: 'index.html' });
@@ -345,6 +365,7 @@ const renderDirectoryListing = async (
       // ignore
     }
 
+    // Try old structure: pages/<host>/root/index.html
     const pagesDir = path.join(root, 'pages');
     try {
       const hostDirs = (await fs.readdir(pagesDir, { withFileTypes: true }))
@@ -353,7 +374,12 @@ const renderDirectoryListing = async (
         .slice(0, 20);
       for (const hostName of hostDirs) {
         const candidate = `/pages/${encodeURIComponent(hostName)}/root/index.html`;
-        recommended.push({ href: candidate, name: `${hostName} (root)` });
+        try {
+          await fs.access(path.join(root, 'pages', hostName, 'root', 'index.html'));
+          recommended.push({ href: candidate, name: `${hostName} (root)` });
+        } catch {
+          // ignore
+        }
       }
     } catch {
       // ignore

@@ -240,6 +240,7 @@ export class Scraper {
       }
 
       const pagePath = this.storage.registerPageMapping(item.url);
+      this.storage.setCurrentPageDir(pagePath);
 
       const responseMap = new Map<string, { contentType: string | null; body: Buffer }>();
       for (const response of captured.responses) {

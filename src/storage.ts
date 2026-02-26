@@ -27,10 +27,11 @@ export class Storage {
   private readonly primaryHost: string | null;
   private contentHashMap = new Map<string, string>();
   private manifest: Manifest;
+  private currentPageDir: string | null = null;
 
   constructor(outputDir: string, options: ScrapeOptions) {
     this.outputDir = outputDir;
-    this.pagesDir = outputDir;
+    this.pagesDir = path.join(outputDir, 'pages');
     this.assetsDir = path.join(outputDir, 'assets');
     this.assetsImgDir = path.join(this.assetsDir, 'img');
     this.assetsCssDir = path.join(this.assetsDir, 'css');
@@ -52,9 +53,10 @@ export class Storage {
 
   async init(): Promise<void> {
     await fs.mkdir(this.pagesDir, { recursive: true });
-    await fs.mkdir(this.assetsDir, { recursive: true });
-    await fs.mkdir(this.assetsImgDir, { recursive: true });
-    await fs.mkdir(this.assetsCssDir, { recursive: true });
+  }
+
+  setCurrentPageDir(pagePath: string): void {
+    this.currentPageDir = path.dirname(pagePath);
   }
 
   registerPageMapping(url: string, explicitPath?: string): string {
@@ -117,6 +119,10 @@ export class Storage {
     contentType: string | null,
     kind: 'img' | 'css' | 'other' = 'other',
   ): Promise<AssetEntry> {
+    if (!this.currentPageDir) {
+      throw new Error('Must call setCurrentPageDir before saving assets');
+    }
+
     const hash = createHash('sha256').update(body).digest('hex').slice(0, 16);
     let extension = '';
     if (contentType) {
@@ -131,15 +137,20 @@ export class Storage {
       extension = ext || '';
     }
     const filename = `${hash}${extension}`;
+    
+    // Create assets directory inside the current page directory
+    const pageAssetsDir = path.join(this.currentPageDir, 'assets');
     const baseDir =
       kind === 'img'
-        ? this.assetsImgDir
+        ? path.join(pageAssetsDir, 'img')
         : kind === 'css'
-          ? this.assetsCssDir
-          : this.assetsDir;
+          ? path.join(pageAssetsDir, 'css')
+          : pageAssetsDir;
+    
+    await fs.mkdir(baseDir, { recursive: true });
     const localPath = path.join(baseDir, filename);
 
-    const mapKey = `${kind}/${filename}`;
+    const mapKey = `${this.currentPageDir}:${kind}/${filename}`;
     const existing = this.contentHashMap.get(mapKey);
     if (!existing) {
       await fs.writeFile(localPath, body);

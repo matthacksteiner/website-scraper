@@ -22,7 +22,7 @@ bun run build
 bun run serve --dir scraped_sites/scrape-<domain>-<timestamp>
 ```
 
-Then open the printed `http://127.0.0.1:4173/` URL in your browser.
+Then open the printed `http://127.0.0.1:4173/` URL in your browser. The server will automatically serve `pages/index.html` as the default page.
 
 To serve the newest scrape output automatically:
 
@@ -30,6 +30,8 @@ To serve the newest scrape output automatically:
 bun run build
 bun run serve:latest
 ```
+
+This will find the most recent scrape directory and serve its root page at `http://127.0.0.1:4173/`.
 
 ## Quality Tooling
 
@@ -83,16 +85,21 @@ bun run start --url https://example.com --subpages --scope same-origin
 ```
 scraped_sites/
   scrape-<domain>-<timestamp>/
-    index.html
-    <subpage>/index.html
-    assets/
-      img/
-      css/
+    pages/
+      assets/
+        img/
+        css/
+      index.html
+      <subpage>/
+        assets/
+          img/
+          css/
+        index.html
     scrape-manifest.json
     scrape-log.jsonl
 ```
 
-Root page HTML is saved as `index.html` in the output directory, with `assets/` beside it. Subpages are saved under their own folders as `<subpage>/index.html`. By default, HTML references local files in `assets/` (`assets/img`, `assets/css`, etc). In `--single-file` mode, CSS/images/fonts are inlined into each HTML page.
+Pages are saved under the `pages/` directory, with each page having its own `assets/` folder containing only the assets used by that page. The root page is at `pages/index.html` with assets in `pages/assets/`, and subpages are at `pages/<subpage>/index.html` with assets in `pages/<subpage>/assets/`. By default, HTML references local files in `assets/` (`assets/img`, `assets/css`, etc). In `--single-file` mode, CSS/images/fonts are inlined into each HTML page.
 
 ## Notes
 
