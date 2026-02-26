@@ -1,5 +1,5 @@
 import { load } from 'cheerio';
-import { CapturedResponse } from './types';
+import { CapturedResponse, ComputedStyleSnapshot } from './types';
 import { normalizeUrl } from './url';
 import postcss from 'postcss';
 import valueParser from 'postcss-value-parser';
@@ -9,6 +9,7 @@ export interface CapturedPage {
   status: number | null;
   contentType: string | null;
   responses: CapturedResponse[];
+  computedSnapshot: ComputedStyleSnapshot | null;
 }
 
 const isSkippable = (value: string): boolean => {
@@ -285,5 +286,5 @@ export const capturePageFetch = async (
 
   const responses = await captureAssetsForHtml(html, url, userAgent, timeoutMs);
 
-  return { html, status, contentType, responses };
+  return { html, status, contentType, responses, computedSnapshot: null };
 };

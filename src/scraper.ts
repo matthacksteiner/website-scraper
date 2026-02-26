@@ -1,6 +1,7 @@
 import { chromium, BrowserContext } from 'playwright';
 import { load } from 'cheerio';
-import { promises as fs } from 'fs';
+import { promises as fs, statSync } from 'fs';
+import path from 'path';
 import { ScrapeOptions } from './types';
 import { createScopeFilter, isHttpUrl, normalizeUrl } from './url';
 import { Storage } from './storage';
@@ -9,6 +10,12 @@ import { inlineHtmlAssets, rewriteCss, rewriteHtml } from './rewrite';
 import { capturePage, CapturedPage } from './playwright_capture';
 import { Crawler, CrawlItem } from './crawler';
 import { captureAssetsForHtml, capturePageFetch } from './fetch_capture';
+import {
+  CdBrandingAssets,
+  MiniCdCollector,
+  renderCdHtml,
+  renderCdMarkdown,
+} from './mini_cd';
 
 class RateLimiter {
   private last = 0;
@@ -64,6 +71,7 @@ const extractLinks = (html: string, baseUrl: string): string[] => {
 };
 
 const SPINNER_FRAMES = ['-', '\\', '|', '/'] as const;
+const toPosix = (value: string): string => value.split(path.sep).join('/');
 
 export class Scraper {
   private storage: Storage;
@@ -80,6 +88,7 @@ export class Scraper {
   private lastNonTtyRenderAt = 0;
   private spinnerIndex = 0;
   private lastStartedUrl: string | null = null;
+  private miniCdCollector = new MiniCdCollector();
 
   constructor(private options: ScrapeOptions) {
     this.storage = new Storage(options.output, options);
@@ -133,6 +142,17 @@ export class Scraper {
       this.renderProgress(true, true);
     }
     if (crawlError) throw crawlError;
+
+    try {
+      await this.writeCdFile();
+    } catch (error) {
+      this.storage.recordError({
+        url: this.options.url,
+        error: (error as Error).message,
+        phase: 'cd',
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     await this.storage.finalize();
 
@@ -205,6 +225,10 @@ export class Scraper {
         return;
       }
 
+      if (captured.computedSnapshot) {
+        this.miniCdCollector.addComputedSnapshot(captured.computedSnapshot);
+      }
+
       // Playwright only captures resources that were actually requested during the page load.
       // For lazy-loaded media, this can miss important assets. We augment by discovering assets
       // directly from the captured HTML/CSS and fetching any that aren't already captured.
@@ -267,6 +291,7 @@ export class Scraper {
           });
           if (kind === 'css') {
             savedCssAssets.set(asset.path, normalizeUrl(response.url));
+            this.miniCdCollector.addCss(response.body.toString('utf8'));
           }
         } catch (error) {
           this.storage.recordError({
@@ -337,6 +362,9 @@ export class Scraper {
         this.options.singleFile,
         this.options.stripConsent,
       );
+      if (!captured.computedSnapshot) {
+        this.miniCdCollector.addHtml(rewrittenHtml);
+      }
 
       await this.storage.savePage(
         {
@@ -360,6 +388,115 @@ export class Scraper {
     } finally {
       this.markPageFinished();
     }
+  }
+
+  private async writeCdFile(): Promise<void> {
+    const report = this.miniCdCollector.buildReport(this.options.url);
+    const rootPagePath = this.storage.pagePathForUrl(this.options.url);
+    const dataDir = path.join(path.dirname(rootPagePath), 'data');
+    const markdownPath = path.join(dataDir, 'cd.md');
+    const htmlPath = path.join(dataDir, 'cd.html');
+    const branding = await this.extractBrandingAssets(rootPagePath, htmlPath);
+
+    await fs.mkdir(dataDir, { recursive: true });
+    await Promise.all([
+      fs.writeFile(markdownPath, renderCdMarkdown(report), 'utf8'),
+      fs.writeFile(htmlPath, renderCdHtml(report, branding), 'utf8'),
+    ]);
+
+    await this.storage.logEvent({
+      type: 'cd-written',
+      markdownPath,
+      htmlPath,
+    });
+  }
+
+  private async extractBrandingAssets(
+    rootPagePath: string,
+    cdHtmlPath: string,
+  ): Promise<CdBrandingAssets> {
+    try {
+      const html = await fs.readFile(rootPagePath, 'utf8');
+      const $ = load(html);
+
+      const faviconRaw =
+        this.pickFirstAttr(
+          $,
+          [
+            'link[rel~="icon"][href]',
+            'link[rel="shortcut icon"][href]',
+            'link[rel="apple-touch-icon"][href]',
+          ],
+          'href',
+        ) || this.pickFirstAttr($, ['meta[property="og:image"][content]'], 'content');
+
+      const logoRaw = this.pickFirstAttr(
+        $,
+        [
+          'header a[class*="logo" i] img[src]',
+          'a[class*="logo" i] img[src]',
+          'img[alt*="logo" i][src]',
+          'img[src*="logo" i]',
+          'header img[src]',
+        ],
+        'src',
+      );
+
+      return {
+        faviconHref: this.resolveBrandAssetPath(faviconRaw, rootPagePath, cdHtmlPath),
+        logoHref: this.resolveBrandAssetPath(logoRaw, rootPagePath, cdHtmlPath),
+      };
+    } catch {
+      return {};
+    }
+  }
+
+  private pickFirstAttr(
+    $: ReturnType<typeof load>,
+    selectors: string[],
+    attribute: string,
+  ): string | null {
+    for (const selector of selectors) {
+      const element = $(selector).first();
+      const value = element.attr(attribute);
+      if (value && value.trim()) return value.trim();
+    }
+    return null;
+  }
+
+  private resolveBrandAssetPath(
+    rawValue: string | null,
+    rootPagePath: string,
+    cdHtmlPath: string,
+  ): string | null {
+    if (!rawValue) return null;
+    const value = rawValue.trim();
+    if (!value) return null;
+    if (value.startsWith('data:')) return value;
+    if (value.startsWith('http://') || value.startsWith('https://')) return value;
+    if (value.startsWith('//')) return `https:${value}`;
+
+    const hashIndex = value.indexOf('#');
+    const queryIndex = value.indexOf('?');
+    let splitIndex = -1;
+    if (hashIndex !== -1 && queryIndex !== -1) splitIndex = Math.min(hashIndex, queryIndex);
+    else splitIndex = Math.max(hashIndex, queryIndex);
+    const suffix = splitIndex === -1 ? '' : value.slice(splitIndex);
+    const filePart = splitIndex === -1 ? value : value.slice(0, splitIndex);
+    if (!filePart) return null;
+
+    if (filePart.startsWith('/')) return value;
+
+    const absolutePath = path.resolve(path.dirname(rootPagePath), filePart);
+    try {
+      const stat = statSync(absolutePath);
+      if (!stat.isFile()) return value;
+    } catch {
+      return value;
+    }
+
+    const relative = path.relative(path.dirname(cdHtmlPath), absolutePath);
+    return `${toPosix(relative || '.')}${suffix}`;
   }
 
   private startProgressTicker(): void {

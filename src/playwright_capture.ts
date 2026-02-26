@@ -1,5 +1,5 @@
 import { BrowserContext } from 'playwright';
-import { CapturedResponse } from './types';
+import { CapturedResponse, ComputedStyleSnapshot } from './types';
 import { isHttpUrl, normalizeUrl } from './url';
 
 export interface CapturedPage {
@@ -7,6 +7,7 @@ export interface CapturedPage {
   status: number | null;
   contentType: string | null;
   responses: CapturedResponse[];
+  computedSnapshot: ComputedStyleSnapshot | null;
 }
 
 interface CaptureOptions {
@@ -254,6 +255,264 @@ const expandInteractiveMenus = async (page: any): Promise<void> => {
   }
 };
 
+const VIEWPORT_BREAKPOINT_WIDTHS = [360, 480, 768, 1024, 1280, 1440];
+
+const collectComputedSnapshot = async (
+  page: any,
+): Promise<ComputedStyleSnapshot | null> => {
+  try {
+    const base = (await page.evaluate(() => {
+      const makeCounter = () => Object.create(null) as Record<string, number>;
+      const inc = (target: Record<string, number>, raw: string) => {
+        if (!raw) return;
+        target[raw] = (target[raw] || 0) + 1;
+      };
+
+      const normalizeColor = (value: string) => {
+        const compact = String(value || '')
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, '');
+        if (
+          !compact ||
+          compact === 'transparent' ||
+          compact === 'rgba(0,0,0,0)' ||
+          compact === 'initial' ||
+          compact === 'inherit' ||
+          compact === 'currentcolor' ||
+          compact.includes('var(')
+        ) {
+          return '';
+        }
+        return compact;
+      };
+
+      const normalizeFontFamily = (value: string) => {
+        const first = String(value || '')
+          .split(',')[0]
+          .trim()
+          .replace(/^['"]+|['"]+$/g, '');
+        if (!first || first.toLowerCase() === 'inherit') return '';
+        return first;
+      };
+
+      const normalizeLength = (value: string) => {
+        const compact = String(value || '')
+          .trim()
+          .toLowerCase()
+          .replace(/\s+/g, '');
+        if (!compact || compact === 'initial' || compact === 'inherit') return '';
+        return compact;
+      };
+
+      const isMeaningfulLength = (value: string) => {
+        if (!value) return false;
+        if (value === 'normal') return false;
+        if (/^0(?:\.0+)?(?:[a-z%]+)?$/i.test(value)) return false;
+        return true;
+      };
+
+      const textColors = makeCounter();
+      const backgroundColors = makeCounter();
+      const borderColors = makeCounter();
+      const fillColors = makeCounter();
+      const fontFamilies = makeCounter();
+      const fontSizes = makeCounter();
+      const fontWeights = makeCounter();
+      const lineHeights = makeCounter();
+      const spacing = makeCounter();
+      const borderRadius = makeCounter();
+
+      const spacingProps = [
+        'marginTop',
+        'marginRight',
+        'marginBottom',
+        'marginLeft',
+        'paddingTop',
+        'paddingRight',
+        'paddingBottom',
+        'paddingLeft',
+        'rowGap',
+        'columnGap',
+      ] as const;
+      const radiusProps = [
+        'borderTopLeftRadius',
+        'borderTopRightRadius',
+        'borderBottomRightRadius',
+        'borderBottomLeftRadius',
+      ] as const;
+
+      const allElements = Array.from(document.querySelectorAll('*'));
+      for (const element of allElements) {
+        const style = window.getComputedStyle(element);
+        inc(textColors, normalizeColor(style.color));
+        inc(backgroundColors, normalizeColor(style.backgroundColor));
+        inc(borderColors, normalizeColor(style.borderTopColor));
+        inc(borderColors, normalizeColor(style.borderRightColor));
+        inc(borderColors, normalizeColor(style.borderBottomColor));
+        inc(borderColors, normalizeColor(style.borderLeftColor));
+
+        const fill = normalizeColor((style as any).fill || '');
+        if (fill && fill !== 'none') inc(fillColors, fill);
+        const stroke = normalizeColor((style as any).stroke || '');
+        if (stroke && stroke !== 'none') inc(fillColors, stroke);
+
+        inc(fontFamilies, normalizeFontFamily(style.fontFamily));
+
+        const size = normalizeLength(style.fontSize);
+        if (isMeaningfulLength(size)) inc(fontSizes, size);
+
+        const weight = normalizeLength(style.fontWeight);
+        if (weight) inc(fontWeights, weight);
+
+        const lineHeight = normalizeLength(style.lineHeight);
+        if (isMeaningfulLength(lineHeight)) inc(lineHeights, lineHeight);
+
+        for (const prop of spacingProps) {
+          const value = normalizeLength(style[prop] || '');
+          if (isMeaningfulLength(value)) inc(spacing, value);
+        }
+
+        for (const prop of radiusProps) {
+          const value = normalizeLength(style[prop] || '');
+          if (isMeaningfulLength(value)) inc(borderRadius, value);
+        }
+      }
+
+      return {
+        html: {
+          elements: allElements.length,
+          externalStylesheets: document.querySelectorAll('link[rel~="stylesheet"][href]')
+            .length,
+          inlineStyleElements: document.querySelectorAll('style').length,
+          inlineStyleAttributes: document.querySelectorAll('[style]').length,
+        },
+        used: {
+          colors: {
+            text: textColors,
+            background: backgroundColors,
+            border: borderColors,
+            fill: fillColors,
+          },
+          typography: {
+            fontFamilies,
+            fontSizes,
+            fontWeights,
+            lineHeights,
+          },
+          layout: {
+            spacing,
+            borderRadius,
+          },
+        },
+      };
+    })) as Omit<ComputedStyleSnapshot, 'headings'>;
+
+    const originalViewport = page.viewportSize() ?? { width: 1280, height: 720 };
+    const widths = Array.from(
+      new Set([...VIEWPORT_BREAKPOINT_WIDTHS, Number(originalViewport.width)]),
+    )
+      .filter((value) => Number.isFinite(value) && value > 0)
+      .sort((a, b) => a - b);
+
+    const headings: ComputedStyleSnapshot['headings'] = [];
+    for (const width of widths) {
+      await page.setViewportSize({
+        width,
+        height: originalViewport.height,
+      });
+      await sleep(150);
+
+      const headingAtWidth = (await page.evaluate((breakpoint: string) => {
+        const makeCounter = () => Object.create(null) as Record<string, number>;
+        const inc = (target: Record<string, number>, raw: string) => {
+          if (!raw) return;
+          target[raw] = (target[raw] || 0) + 1;
+        };
+
+        const normalizeFontFamily = (value: string) => {
+          const first = String(value || '')
+            .split(',')[0]
+            .trim()
+            .replace(/^['"]+|['"]+$/g, '');
+          if (!first || first.toLowerCase() === 'inherit') return '';
+          return first;
+        };
+
+        const normalizeLength = (value: string) => {
+          const compact = String(value || '')
+            .trim()
+            .toLowerCase()
+            .replace(/\s+/g, '');
+          if (!compact || compact === 'initial' || compact === 'inherit') return '';
+          return compact;
+        };
+
+        const isMeaningfulLength = (value: string) => {
+          if (!value) return false;
+          if (value === 'normal') return false;
+          if (/^0(?:\.0+)?(?:[a-z%]+)?$/i.test(value)) return false;
+          return true;
+        };
+
+        const bucketByHeading = new Map<
+          string,
+          {
+            fontFamilies: Record<string, number>;
+            fontSizes: Record<string, number>;
+            fontWeights: Record<string, number>;
+            lineHeights: Record<string, number>;
+          }
+        >();
+
+        const elements = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6'));
+        for (const element of elements) {
+          const heading = element.tagName.toLowerCase();
+          const style = window.getComputedStyle(element);
+          let bucket = bucketByHeading.get(heading);
+          if (!bucket) {
+            bucket = {
+              fontFamilies: makeCounter(),
+              fontSizes: makeCounter(),
+              fontWeights: makeCounter(),
+              lineHeights: makeCounter(),
+            };
+            bucketByHeading.set(heading, bucket);
+          }
+
+          inc(bucket.fontFamilies, normalizeFontFamily(style.fontFamily));
+          const size = normalizeLength(style.fontSize);
+          if (isMeaningfulLength(size)) inc(bucket.fontSizes, size);
+          const weight = normalizeLength(style.fontWeight);
+          if (weight) inc(bucket.fontWeights, weight);
+          const lineHeight = normalizeLength(style.lineHeight);
+          if (isMeaningfulLength(lineHeight)) inc(bucket.lineHeights, lineHeight);
+        }
+
+        return Array.from(bucketByHeading.entries()).map(([heading, tokenMaps]) => ({
+          heading,
+          breakpoint,
+          fontFamilies: tokenMaps.fontFamilies,
+          fontSizes: tokenMaps.fontSizes,
+          fontWeights: tokenMaps.fontWeights,
+          lineHeights: tokenMaps.lineHeights,
+        }));
+      }, `viewport <= ${width}px`)) as ComputedStyleSnapshot['headings'];
+
+      headings.push(...headingAtWidth);
+    }
+
+    await page.setViewportSize(originalViewport);
+
+    return {
+      ...base,
+      headings,
+    };
+  } catch {
+    return null;
+  }
+};
+
 export const capturePage = async (
   context: BrowserContext,
   url: string,
@@ -375,6 +634,7 @@ export const capturePage = async (
   }
 
   const html = (await page.content().catch(() => null)) ?? initialHtml ?? '';
+  const computedSnapshot = await collectComputedSnapshot(page);
   const status = mainResponse ? mainResponse.status() : null;
   const contentType = mainResponse
     ? mainResponse.headers()['content-type'] || null
@@ -387,5 +647,6 @@ export const capturePage = async (
     status,
     contentType,
     responses,
+    computedSnapshot,
   };
 };

@@ -34,9 +34,8 @@ yarn-error.log*
 Thumbs.db
 
 # Scraping data (generated)
-scrape-*/
-scrape.json
-downloads/
+scraped_sites/
+
 
 # IDE
 .idea/

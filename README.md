@@ -55,6 +55,7 @@ bun run format
 - `robots.txt` compliance and rate limiting
 - Crawl limits for safety
 - Manifest and JSONL event log
+- Auto-generated CD reports in `<page-dir>/data/` (`cd.md` + `cd.html`) using computed styles (selected, actually-used tokens)
 
 ## Usage
 
@@ -86,20 +87,20 @@ bun run start --url https://example.com --subpages --scope same-origin
 scraped_sites/
   scrape-<domain>-<timestamp>/
     pages/
-      assets/
-        img/
-        css/
-      index.html
-      <subpage>/
+      <page-dir>/
         assets/
           img/
           css/
+        data/
+          cd.md
+          cd.html
         index.html
     scrape-manifest.json
     scrape-log.jsonl
 ```
 
 Pages are saved under the `pages/` directory, with each page having its own `assets/` folder containing only the assets used by that page. The root page is at `pages/index.html` with assets in `pages/assets/`, and subpages are at `pages/<subpage>/index.html` with assets in `pages/<subpage>/assets/`. By default, HTML references local files in `assets/` (`assets/img`, `assets/css`, etc). In `--single-file` mode, CSS/images/fonts are inlined into each HTML page.
+After each scrape, a style summary is written to `<page-dir>/data/cd.md` and `<page-dir>/data/cd.html` (selected colors/fonts/typography from computed styles, media queries/breakpoints, headline styles by breakpoint, plus raw extracted data).
 
 ## Notes
 

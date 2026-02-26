@@ -57,3 +57,40 @@ export interface CapturedResponse {
   contentType: string | null;
   body: Buffer;
 }
+
+export interface ComputedHeadingSnapshot {
+  heading: string;
+  breakpoint: string;
+  fontFamilies: Record<string, number>;
+  fontSizes: Record<string, number>;
+  fontWeights: Record<string, number>;
+  lineHeights: Record<string, number>;
+}
+
+export interface ComputedStyleSnapshot {
+  html: {
+    elements: number;
+    externalStylesheets: number;
+    inlineStyleElements: number;
+    inlineStyleAttributes: number;
+  };
+  used: {
+    colors: {
+      text: Record<string, number>;
+      background: Record<string, number>;
+      border: Record<string, number>;
+      fill: Record<string, number>;
+    };
+    typography: {
+      fontFamilies: Record<string, number>;
+      fontSizes: Record<string, number>;
+      fontWeights: Record<string, number>;
+      lineHeights: Record<string, number>;
+    };
+    layout: {
+      spacing: Record<string, number>;
+      borderRadius: Record<string, number>;
+    };
+  };
+  headings: ComputedHeadingSnapshot[];
+}
