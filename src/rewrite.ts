@@ -719,19 +719,6 @@ export const rewriteHtml = (
     // Keep scripts in single-file mode so interactive navigation (e.g. hover menus) can
     // behave closer to the live site when served over HTTP.
     $('style[data-scrape-slider-fallback]').remove();
-  } else {
-    // For editable design snapshots, remove runtime scripts and preloads that trigger
-    // API/widget requests and noisy console errors in offline/local serving.
-    $('script').each((_, element) => {
-      const type = String($(element).attr('type') || '')
-        .trim()
-        .toLowerCase();
-      if (type === 'application/ld+json') return;
-      $(element).remove();
-    });
-    $(
-      'link[rel="modulepreload"], link[rel="preload"], link[rel="prefetch"], link[rel="preconnect"], link[rel="dns-prefetch"]',
-    ).remove();
   }
 
   return $.html();
@@ -841,32 +828,35 @@ export const inlineHtmlAssets = (
   responses: Map<string, { contentType: string | null; body: Buffer }>,
   resourceMap: Map<string, string>,
   singleFile: boolean,
+  inlineStylesheets = true,
 ): string => {
   const $ = load(html);
 
-  $('link[rel="stylesheet"][href]').each((_, element) => {
-    const href = $(element).attr('href');
-    if (!href) return;
-    const resolved = resolveUrl(href, pageUrl);
-    if (!resolved) return;
-    const response =
-      responses.get(resolved) ||
-      (resourceMap.get(resolved)
-        ? { contentType: 'text/css', body: readFileSync(resourceMap.get(resolved)!) }
-        : null);
-    if (!response) return;
-    const styleTag = $('<style></style>');
-    const rewritten = rewriteCss(
-      response.body.toString('utf8'),
-      resolved,
-      pagePath,
-      resourceMap,
-      responses,
-      singleFile,
-    );
-    styleTag.text(rewritten);
-    $(element).replaceWith(styleTag);
-  });
+  if (inlineStylesheets) {
+    $('link[rel="stylesheet"][href]').each((_, element) => {
+      const href = $(element).attr('href');
+      if (!href) return;
+      const resolved = resolveUrl(href, pageUrl);
+      if (!resolved) return;
+      const response =
+        responses.get(resolved) ||
+        (resourceMap.get(resolved)
+          ? { contentType: 'text/css', body: readFileSync(resourceMap.get(resolved)!) }
+          : null);
+      if (!response) return;
+      const styleTag = $('<style></style>');
+      const rewritten = rewriteCss(
+        response.body.toString('utf8'),
+        resolved,
+        pagePath,
+        resourceMap,
+        responses,
+        singleFile,
+      );
+      styleTag.text(rewritten);
+      $(element).replaceWith(styleTag);
+    });
+  }
 
   $('link[rel="modulepreload"]').remove();
   $('link[rel="preload"][as="script"]').remove();

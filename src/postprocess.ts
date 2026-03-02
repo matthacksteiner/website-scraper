@@ -18,6 +18,7 @@ program
 
 program.parse(process.argv);
 const opts = program.opts();
+const singleFile = opts.singleFile === true;
 
 const rootDir = path.resolve(String(opts.dir));
 const manifestPath = path.join(rootDir, 'scrape-manifest.json');
@@ -61,7 +62,8 @@ const main = async (): Promise<void> => {
       page.path,
       responses,
       resourceMap,
-      Boolean(opts.singleFile),
+      singleFile,
+      singleFile,
     );
     const rewritten = rewriteHtml(
       inlined,
@@ -69,7 +71,7 @@ const main = async (): Promise<void> => {
       page.path,
       resourceMap,
       responses,
-      Boolean(opts.singleFile),
+      singleFile,
       Boolean(opts.stripConsent),
     );
     await fs.writeFile(page.path, rewritten, 'utf8');

@@ -12,6 +12,7 @@ export interface CapturedPage {
 
 interface CaptureOptions {
   timeoutMs: number;
+  collectComputedSnapshot?: boolean;
   /**
    * Extra time to allow late-loading/lazy assets (e.g. sliders) to finish requesting resources.
    * Best-effort: the capture continues even if timeouts are hit.
@@ -634,7 +635,9 @@ export const capturePage = async (
   }
 
   const html = (await page.content().catch(() => null)) ?? initialHtml ?? '';
-  const computedSnapshot = await collectComputedSnapshot(page);
+  const computedSnapshot = options.collectComputedSnapshot
+    ? await collectComputedSnapshot(page)
+    : null;
   const status = mainResponse ? mainResponse.status() : null;
   const contentType = mainResponse
     ? mainResponse.headers()['content-type'] || null

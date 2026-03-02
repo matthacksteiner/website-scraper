@@ -26,6 +26,7 @@ export class Storage {
   readonly resourceMap = new Map<string, string>();
   private readonly primaryHost: string | null;
   private contentHashMap = new Map<string, string>();
+  private eventLines: string[] = [];
   private manifest: Manifest;
   private currentPageDir: string | null = null;
 
@@ -173,11 +174,14 @@ export class Storage {
 
   async logEvent(event: Record<string, unknown>): Promise<void> {
     const line = JSON.stringify({ timestamp: new Date().toISOString(), ...event });
-    await fs.appendFile(this.logPath, `${line}\n`);
+    this.eventLines.push(`${line}\n`);
   }
 
   async finalize(): Promise<void> {
     this.manifest.finishedAt = new Date().toISOString();
+    if (this.eventLines.length > 0) {
+      await fs.writeFile(this.logPath, this.eventLines.join(''), 'utf8');
+    }
     await fs.writeFile(this.manifestPath, JSON.stringify(this.manifest, null, 2), 'utf8');
   }
 

@@ -11,6 +11,12 @@ import { capturePage, CapturedPage } from './playwright_capture';
 import { Crawler, CrawlItem } from './crawler';
 import { captureAssetsForHtml, capturePageFetch } from './fetch_capture';
 import {
+  AgentPageContext,
+  buildAgentContextDocument,
+  buildAgentPageContext,
+  renderAgentContextMarkdown,
+} from './agent_context';
+import {
   CdBrandingAssets,
   MiniCdCollector,
   renderCdHtml,
@@ -89,6 +95,7 @@ export class Scraper {
   private spinnerIndex = 0;
   private lastStartedUrl: string | null = null;
   private miniCdCollector = new MiniCdCollector();
+  private agentPages: AgentPageContext[] = [];
 
   constructor(private options: ScrapeOptions) {
     this.storage = new Storage(options.output, options);
@@ -154,6 +161,17 @@ export class Scraper {
       });
     }
 
+    try {
+      await this.writeAgentContext();
+    } catch (error) {
+      this.storage.recordError({
+        url: this.options.url,
+        error: (error as Error).message,
+        phase: 'agent-context',
+        timestamp: new Date().toISOString(),
+      });
+    }
+
     await this.storage.finalize();
 
     const errors = this.storage.errorCount();
@@ -207,6 +225,7 @@ export class Scraper {
         } else {
           captured = await capturePage(context, item.url, {
             timeoutMs: this.options.timeoutMs,
+            collectComputedSnapshot: false,
           });
         }
       } catch (error) {
@@ -352,6 +371,7 @@ export class Scraper {
         responseMap,
         this.storage.resourceMap,
         this.options.singleFile,
+        this.options.singleFile,
       );
       rewrittenHtml = rewriteHtml(
         rewrittenHtml,
@@ -376,6 +396,18 @@ export class Scraper {
           timestamp: new Date().toISOString(),
         },
         rewrittenHtml,
+      );
+
+      this.agentPages.push(
+        buildAgentPageContext({
+          outputDir: this.options.output,
+          url: item.url,
+          pagePath,
+          depth: item.depth,
+          status: captured.status,
+          contentType: captured.contentType,
+          html: rewrittenHtml,
+        }),
       );
 
       this.processedPages += 1;
@@ -408,6 +440,31 @@ export class Scraper {
       type: 'cd-written',
       markdownPath,
       htmlPath,
+    });
+  }
+
+  private async writeAgentContext(): Promise<void> {
+    const rootPagePath = this.storage.pagePathForUrl(this.options.url);
+    const contextDir = path.join(this.options.output, 'agent');
+    const contextJsonPath = path.join(contextDir, 'context.json');
+    const contextMdPath = path.join(contextDir, 'context.md');
+    const rootRelative = toPosix(path.relative(this.options.output, rootPagePath));
+    const context = buildAgentContextDocument(
+      this.options.url,
+      rootRelative,
+      this.agentPages,
+    );
+
+    await fs.mkdir(contextDir, { recursive: true });
+    await Promise.all([
+      fs.writeFile(contextJsonPath, JSON.stringify(context, null, 2), 'utf8'),
+      fs.writeFile(contextMdPath, renderAgentContextMarkdown(context), 'utf8'),
+    ]);
+
+    await this.storage.logEvent({
+      type: 'agent-context-written',
+      contextJsonPath,
+      contextMdPath,
     });
   }
 

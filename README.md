@@ -55,7 +55,9 @@ bun run format
 - `robots.txt` compliance and rate limiting
 - Crawl limits for safety
 - Manifest and JSONL event log
-- Auto-generated CD reports in `<page-dir>/data/` (`cd.md` + `cd.html`) using computed styles (selected, actually-used tokens)
+- Auto-generated CD reports in `<page-dir>/data/` (`cd.md` + `cd.html`) using lightweight HTML/CSS token extraction
+- Compact agent index in `agent/context.json` + `agent/context.md` for faster agent onboarding
+- LLM-friendly output by default (editable CSS files instead of huge inline style blocks)
 
 ## Usage
 
@@ -81,6 +83,22 @@ bun run start --url https://example.com --subpages --scope same-origin
 - `--user-agent <string>`
 - `--timeout-ms <number>` (default: 30000)
 
+## Agent-Optimized Workflow
+
+The scraper now applies LLM-friendly defaults automatically:
+
+- In `--no-single-file` mode, stylesheet files stay external (smaller editable HTML + direct CSS targets).
+- `agent/context.json` + `agent/context.md` are always generated.
+- CD summary files are generated with lightweight extraction (no expensive computed-style pass).
+
+For redesign-focused runs:
+
+```bash
+bun run start --url https://example.com --subpages
+```
+
+Then start from `agent/context.md` / `agent/context.json`.
+
 ## Output
 
 ```
@@ -97,10 +115,13 @@ scraped_sites/
         index.html
     scrape-manifest.json
     scrape-log.jsonl
+    agent/
+      context.json
+      context.md
 ```
 
 Pages are saved under the `pages/` directory, with each page having its own `assets/` folder containing only the assets used by that page. The root page is at `pages/index.html` with assets in `pages/assets/`, and subpages are at `pages/<subpage>/index.html` with assets in `pages/<subpage>/assets/`. By default, HTML references local files in `assets/` (`assets/img`, `assets/css`, etc). In `--single-file` mode, CSS/images/fonts are inlined into each HTML page.
-After each scrape, a style summary is written to `<page-dir>/data/cd.md` and `<page-dir>/data/cd.html` (selected colors/fonts/typography from computed styles, media queries/breakpoints, headline styles by breakpoint, plus raw extracted data).
+After each scrape, a style summary is written to `<page-dir>/data/cd.md` and `<page-dir>/data/cd.html` (selected colors/fonts/typography from HTML/CSS, media queries/breakpoints, headline styles by breakpoint, plus raw extracted data).
 
 ## Notes
 
