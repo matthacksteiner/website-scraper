@@ -1,6 +1,5 @@
 import { promises as fs } from 'fs';
 import path from 'path';
-import os from 'os';
 import {
 	HeadingTokenReport,
 	MiniCdReport,
@@ -276,22 +275,19 @@ export const buildResponsiveRef = (report: MiniCdReport): string => {
 	].join('\n');
 };
 
-const SKILLS_DIR = path.join(os.homedir(), '.claude', 'skills');
-
 export const writeSkill = async (
+	outputDir: string,
 	domain: string,
 	sourceUrl: string,
 	report: MiniCdReport,
 ): Promise<string> => {
-	const skillDir = path.join(SKILLS_DIR, `design-${domain}`);
-	const refsDir = path.join(skillDir, 'references');
+	const refsDir = path.join(outputDir, 'references');
 
-	await fs.rm(skillDir, { recursive: true, force: true });
 	await fs.mkdir(refsDir, { recursive: true });
 
 	await Promise.all([
 		fs.writeFile(
-			path.join(skillDir, 'SKILL.md'),
+			path.join(outputDir, 'SKILL.md'),
 			buildSkillMd(domain, sourceUrl, report),
 			'utf8',
 		),
@@ -317,5 +313,5 @@ export const writeSkill = async (
 		),
 	]);
 
-	return skillDir;
+	return outputDir;
 };

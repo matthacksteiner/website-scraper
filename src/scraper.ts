@@ -176,7 +176,7 @@ export class Scraper {
     if (this.options.skill) {
       const domain = new URL(this.options.url).hostname;
       postTasks.push(
-        writeSkill(domain, this.options.url, report).then(async (skillDir) => {
+        writeSkill(this.options.output, domain, this.options.url, report).then(async (skillDir) => {
           await this.storage.logEvent({ type: 'skill-written', skillDir });
         }).catch((error) => {
           this.storage.recordError({
