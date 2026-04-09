@@ -25,7 +25,20 @@ const CONSENT_UNBLOCK_CSS = `
   #BorlabsCookieBox, #BorlabsCookieBoxWrap, #BorlabsCookieBoxWidget, #BorlabsCookieWidget,
   [data-borlabs-cookie-content-blocker-id], [data-borlabs-cookie-script-blocker-id],
   [data-borlabs-cookie-style-blocker-id], [data-borlabs-cookie-style-blocker-href],
-  [data-borlabs-cookie-content], [class*="brlbs-"] { display: none !important; }
+  [data-borlabs-cookie-content], [class*="brlbs-"],
+  [data-acris-cookie-consent], .acris-cookie-consent,
+  #CybotCookiebotDialog, #CybotCookiebotDialogBodyUnderlay, [data-cookieconsent],
+  #onetrust-consent-sdk, #onetrust-banner-sdk, .onetrust-pc-dark-filter,
+  #cmplz-cookiebanner-container, .cmplz-cookiebanner,
+  .klaro, #klaro,
+  #cookie-law-info-bar, #cookie-law-info-again, .cky-consent-container,
+  #usercentrics-root,
+  .qc-cmp2-container, #qcCmpUi,
+  #tarteaucitronRoot, #tarteaucitronAlertBig,
+  .osano-cm-window,
+  [id*="cookie-banner"], [id*="cookie-consent"], [id*="cookie-notice"],
+  [class*="cookie-banner"], [class*="cookie-consent"], [class*="cookie-notice"],
+  [class*="gdpr-banner"], [class*="cc-banner"] { display: none !important; }
 `.trim();
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

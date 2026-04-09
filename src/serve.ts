@@ -55,46 +55,39 @@ const resolveLatestScrapeDir = (scrapesDir: string): string => {
   return candidates[0].dir;
 };
 
-const resolveDefaultPageHtml = async (root: string): Promise<string | null> => {
-  // First try pages/index.html (new structure)
-  const pagesIndex = path.join(root, 'pages', 'index.html');
+const resolveDefaultPageUrl = async (root: string): Promise<string | null> => {
+  // Try manifest first — redirect to the shallowest page
   try {
-    await fs.access(pagesIndex);
-    return pagesIndex;
-  } catch {
-    // Continue to next option
-  }
-
-  // Then try top-level index.html (legacy)
-  const topLevelIndex = path.join(root, 'index.html');
-  try {
-    await fs.access(topLevelIndex);
-    return topLevelIndex;
-  } catch {
-    // Continue to next option
-  }
-
-  // Finally try old pages/<host>/root/index.html structure
-  const pagesDir = path.join(root, 'pages');
-
-  let hostDirs: string[];
-  try {
-    hostDirs = (await fs.readdir(pagesDir, { withFileTypes: true }))
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name)
-      .sort();
-  } catch {
-    return null;
-  }
-
-  for (const hostName of hostDirs) {
-    const rootIndex = path.join(pagesDir, hostName, 'root', 'index.html');
-    try {
-      await fs.access(rootIndex);
-      return rootIndex;
-    } catch {
-      // Try the next host.
+    const text = await fs.readFile(path.join(root, 'scrape-manifest.json'), 'utf8');
+    const manifest = JSON.parse(text);
+    const pages = Array.isArray(manifest?.pages) ? manifest.pages : [];
+    const sorted = [...pages].sort((a: any, b: any) => (a.depth ?? 0) - (b.depth ?? 0));
+    for (const page of sorted) {
+      if (typeof page?.path !== 'string') continue;
+      const absolute = path.resolve(page.path);
+      const rel = path.relative(root, absolute);
+      if (!rel.startsWith('..')) {
+        return `/${rel.split(path.sep).join('/')}`;
+      }
     }
+  } catch {
+    // Manifest not available, fall through to heuristics
+  }
+
+  // Heuristic: pages/index.html (new structure)
+  try {
+    await fs.access(path.join(root, 'pages', 'index.html'));
+    return '/pages/index.html';
+  } catch {
+    // Continue
+  }
+
+  // Legacy: top-level index.html
+  try {
+    await fs.access(path.join(root, 'index.html'));
+    return '/index.html';
+  } catch {
+    // Continue
   }
 
   return null;
@@ -214,7 +207,7 @@ if (latest) {
 }
 const host = String(opts.host);
 const port = toNumber(String(opts.port), 4173);
-let cachedDefaultPageHtml: string | null | undefined;
+let cachedDefaultPageUrl: string | null | undefined;
 let cachedManifestLookup: ManifestLookup | null | undefined;
 
 const server = http.createServer(async (req, res) => {
@@ -266,18 +259,12 @@ const server = http.createServer(async (req, res) => {
       } catch {
         if (reqUrl.pathname === '/' || reqUrl.pathname.endsWith('/')) {
           if (reqUrl.pathname === '/') {
-            if (cachedDefaultPageHtml === undefined) {
-              cachedDefaultPageHtml = await resolveDefaultPageHtml(rootDir);
+            if (cachedDefaultPageUrl === undefined) {
+              cachedDefaultPageUrl = await resolveDefaultPageUrl(rootDir);
             }
-            if (cachedDefaultPageHtml) {
-              const body = await fs.readFile(cachedDefaultPageHtml);
-              const contentType =
-                mime.lookup(cachedDefaultPageHtml) || 'application/octet-stream';
-              res.writeHead(200, {
-                'Content-Type': `${contentType}${String(contentType).startsWith('text/') ? '; charset=utf-8' : ''}`,
-                'Access-Control-Allow-Origin': '*',
-              });
-              res.end(body);
+            if (cachedDefaultPageUrl) {
+              res.writeHead(302, { Location: cachedDefaultPageUrl });
+              res.end();
               return;
             }
           }

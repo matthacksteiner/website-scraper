@@ -48,13 +48,17 @@ program
   .option('--delay-ms <number>', 'Delay between page fetches', '500')
   .option('--concurrency <number>', 'Concurrent page fetches', '2')
   .option('--user-agent <string>', 'Custom user-agent string')
-  .option('--timeout-ms <number>', 'Navigation timeout in ms', '30000');
+  .option('--timeout-ms <number>', 'Navigation timeout in ms', '30000')
+  .option('--skill', 'Generate a Claude Code design skill (default)', true)
+  .option('--no-skill', 'Skip design skill generation');
 
 const main = async () => {
   const rawArgs = process.argv.slice(2);
   const hasNoSubpages = rawArgs.includes('--no-subpages');
   const singleFileFlagIndex = rawArgs.lastIndexOf('--single-file');
   const noSingleFileFlagIndex = rawArgs.lastIndexOf('--no-single-file');
+  const hasStripConsentFlag =
+    rawArgs.includes('--strip-consent') || rawArgs.includes('--no-strip-consent');
   const filteredArgs = rawArgs.filter((arg) => arg !== '--no-subpages');
   program.parse(['node', 'scrape', ...filteredArgs]);
   const opts = program.opts();
@@ -107,6 +111,18 @@ const main = async () => {
       initial: 0,
     });
     responses.singleFile = answer.singleFile ?? false;
+  }
+
+  if (hasStripConsentFlag) {
+    responses.stripConsent = Boolean(opts.stripConsent);
+  } else {
+    const answer = await prompts({
+      type: 'confirm',
+      name: 'stripConsent',
+      message: 'Remove cookie/consent banners?',
+      initial: true,
+    });
+    responses.stripConsent = answer.stripConsent ?? true;
   }
 
   let scope: ScopeMode = 'same-origin';
@@ -189,12 +205,13 @@ const main = async () => {
     maxDepth: parseIntOption(opts.maxDepth, 2, 0),
     output: opts.output ? path.resolve(opts.output) : defaultOutput,
     singleFile: Boolean(responses.singleFile),
-    stripConsent: Boolean(opts.stripConsent),
+    stripConsent: Boolean(responses.stripConsent),
     respectRobots: Boolean(opts.respectRobots),
     delayMs: parseIntOption(opts.delayMs, 500, 0),
     concurrency: parseIntOption(opts.concurrency, 2, 1),
     userAgent: opts.userAgent || DEFAULT_USER_AGENT,
     timeoutMs: parseIntOption(opts.timeoutMs, 30000, 1),
+    skill: Boolean(opts.skill),
   };
 
   const scraper = new Scraper(options);

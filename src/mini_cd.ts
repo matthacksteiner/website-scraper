@@ -2,12 +2,12 @@ import { load } from 'cheerio';
 import postcss, { AtRule, Declaration, Node, Rule } from 'postcss';
 import { ComputedStyleSnapshot } from './types';
 
-interface CountItem {
+export interface CountItem {
   value: string;
   count: number;
 }
 
-interface HeadingTokenReport {
+export interface HeadingTokenReport {
   heading: string;
   breakpoint: string;
   fontFamilies: CountItem[];
@@ -852,17 +852,17 @@ export class MiniCdCollector {
   }
 }
 
-const renderList = (items: CountItem[]): string => {
-  if (items.length === 0) return '- none found';
+export const renderList = (items: CountItem[], emptyText = '- none found'): string => {
+  if (items.length === 0) return emptyText;
   return items.map((item) => `- ${item.value} (${item.count})`).join('\n');
 };
 
-const renderInlineList = (items: CountItem[]): string => {
+export const renderInlineList = (items: CountItem[]): string => {
   if (items.length === 0) return 'none';
   return items.map((item) => `${item.value} (${item.count})`).join(', ');
 };
 
-const selectItems = (
+export const selectItems = (
   items: CountItem[],
   options: { max: number; minCount: number; fallback: number },
 ): CountItem[] => {

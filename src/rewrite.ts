@@ -726,6 +726,7 @@ export const rewriteHtml = (
 
 const stripConsentArtifacts = ($: ReturnType<typeof load>): void => {
   const removeSelectors = [
+    // Borlabs (WordPress)
     '#BorlabsCookieBox',
     '#BorlabsCookieBoxWrap',
     '#BorlabsCookieBoxWidget',
@@ -738,6 +739,48 @@ const stripConsentArtifacts = ($: ReturnType<typeof load>): void => {
     '[class*="brlbs-"]',
     'template[id^="brlbs-"]',
     'template[id^="brlbs_"]',
+    // Acris Cookie Consent (Shopware)
+    '[data-acris-cookie-consent]',
+    '.acris-cookie-consent',
+    // Cookiebot
+    '#CybotCookiebotDialog',
+    '#CybotCookiebotDialogBodyUnderlay',
+    '[data-cookieconsent]',
+    // OneTrust
+    '#onetrust-consent-sdk',
+    '#onetrust-banner-sdk',
+    '.onetrust-pc-dark-filter',
+    // Complianz (WordPress)
+    '#cmplz-cookiebanner-container',
+    '.cmplz-cookiebanner',
+    // Klaro
+    '.klaro',
+    '#klaro',
+    // CookieYes / CookieLaw
+    '#cookie-law-info-bar',
+    '#cookie-law-info-again',
+    '.cky-consent-container',
+    // Usercentrics
+    '#usercentrics-root',
+    // Quantcast / GDPR
+    '.qc-cmp2-container',
+    '#qcCmpUi',
+    // Tarteaucitron
+    '#tarteaucitronRoot',
+    '#tarteaucitronAlertBig',
+    // Osano
+    '.osano-cm-window',
+    // Generic patterns
+    '[id*="cookie-banner"]',
+    '[id*="cookie-consent"]',
+    '[id*="cookie-notice"]',
+    '[class*="cookie-banner"]',
+    '[class*="cookie-consent"]',
+    '[class*="cookie-notice"]',
+    '[class*="gdpr-banner"]',
+    '[class*="cc-banner"]',
+    '[aria-label*="cookie" i]',
+    '[aria-label*="consent" i]',
   ];
 
   removeSelectors.forEach((selector) => $(selector).remove());
@@ -751,6 +794,9 @@ const stripConsentArtifacts = ($: ReturnType<typeof load>): void => {
   $(
     'link[data-borlabs-cookie-style-blocker-id], link[data-borlabs-cookie-style-blocker-href]',
   ).remove();
+
+  // Bootstrap modal backdrops are leftover artifacts in static scrapes
+  $('.modal-backdrop').remove();
 
   $('script').each((_, element) => {
     const el = $(element);
@@ -772,6 +818,28 @@ const stripConsentArtifacts = ($: ReturnType<typeof load>): void => {
       text.includes('brlbs') ||
       el.attr('data-borlabs-cookie-script-blocker-id') !== undefined ||
       el.attr('data-borlabs-cookie-script-blocker-handle') !== undefined
+    ) {
+      el.remove();
+      return;
+    }
+
+    if (
+      src.includes('cookiebot') ||
+      src.includes('onetrust') ||
+      src.includes('cookie-consent') ||
+      src.includes('cookieconsent') ||
+      src.includes('tarteaucitron') ||
+      src.includes('klaro') ||
+      src.includes('complianz') ||
+      src.includes('usercentrics') ||
+      src.includes('osano') ||
+      src.includes('quantcast') ||
+      src.includes('acris-cookie') ||
+      src.includes('acrisCookiePrivacy') ||
+      text.includes('acrisCookiePrivacy') ||
+      text.includes('cookieconsent') ||
+      id.includes('cookiebot') ||
+      id.includes('onetrust')
     ) {
       el.remove();
       return;
@@ -810,7 +878,20 @@ const stripConsentArtifacts = ($: ReturnType<typeof load>): void => {
     #BorlabsCookieBox, #BorlabsCookieBoxWrap, #BorlabsCookieBoxWidget, #BorlabsCookieWidget,
     [data-borlabs-cookie-content-blocker-id], [data-borlabs-cookie-script-blocker-id],
     [data-borlabs-cookie-style-blocker-id], [data-borlabs-cookie-style-blocker-href],
-    [data-borlabs-cookie-content], [class*="brlbs-"] { display: none !important; }
+    [data-borlabs-cookie-content], [class*="brlbs-"],
+    [data-acris-cookie-consent], .acris-cookie-consent,
+    #CybotCookiebotDialog, #CybotCookiebotDialogBodyUnderlay, [data-cookieconsent],
+    #onetrust-consent-sdk, #onetrust-banner-sdk, .onetrust-pc-dark-filter,
+    #cmplz-cookiebanner-container, .cmplz-cookiebanner,
+    .klaro, #klaro,
+    #cookie-law-info-bar, #cookie-law-info-again, .cky-consent-container,
+    #usercentrics-root,
+    .qc-cmp2-container, #qcCmpUi,
+    #tarteaucitronRoot, #tarteaucitronAlertBig,
+    .osano-cm-window,
+    [id*="cookie-banner"], [id*="cookie-consent"], [id*="cookie-notice"],
+    [class*="cookie-banner"], [class*="cookie-consent"], [class*="cookie-notice"],
+    [class*="gdpr-banner"], [class*="cc-banner"] { display: none !important; }
     html, body { overflow: auto !important; }
   `.trim();
   if (hideCss) {

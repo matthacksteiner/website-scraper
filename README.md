@@ -57,6 +57,7 @@ bun run format
 - Manifest and JSONL event log
 - Auto-generated CD reports in `<page-dir>/data/` (`cd.md` + `cd.html`) using lightweight HTML/CSS token extraction
 - Compact agent index in `agent/context.json` + `agent/context.md` for faster agent onboarding
+- Auto-generated Claude Code design skill in `~/.claude/skills/design-<domain>/` with colors, typography, spacing, and breakpoints
 - LLM-friendly output by default (editable CSS files instead of huge inline style blocks)
 
 ## Usage
@@ -82,6 +83,7 @@ bun run start --url https://example.com --subpages --scope same-origin
 - `--concurrency <number>` (default: 2)
 - `--user-agent <string>`
 - `--timeout-ms <number>` (default: 30000)
+- `--skill` / `--no-skill` (default: skill) — generate a Claude Code design skill
 
 ## Agent-Optimized Workflow
 
@@ -90,6 +92,7 @@ The scraper now applies LLM-friendly defaults automatically:
 - In `--no-single-file` mode, stylesheet files stay external (smaller editable HTML + direct CSS targets).
 - `agent/context.json` + `agent/context.md` are always generated.
 - CD summary files are generated with lightweight extraction (no expensive computed-style pass).
+- A design skill is installed to `~/.claude/skills/design-<domain>/` so Claude Code can reference the scraped site's design tokens in future conversations. Disable with `--no-skill`.
 
 For redesign-focused runs:
 
@@ -97,7 +100,7 @@ For redesign-focused runs:
 bun run start --url https://example.com --subpages
 ```
 
-Then start from `agent/context.md` / `agent/context.json`.
+Then start from `agent/context.md` / `agent/context.json`. The design skill is automatically available in Claude Code for matching the site's visual style.
 
 ## Output
 
@@ -118,10 +121,21 @@ scraped_sites/
     agent/
       context.json
       context.md
+
+~/.claude/skills/
+  design-<domain>/
+    SKILL.md
+    references/
+      colors.md
+      typography.md
+      layout.md
+      responsive.md
 ```
 
 Pages are saved under the `pages/` directory, with each page having its own `assets/` folder containing only the assets used by that page. The root page is at `pages/index.html` with assets in `pages/assets/`, and subpages are at `pages/<subpage>/index.html` with assets in `pages/<subpage>/assets/`. By default, HTML references local files in `assets/` (`assets/img`, `assets/css`, etc). In `--single-file` mode, CSS/images/fonts are inlined into each HTML page.
 After each scrape, a style summary is written to `<page-dir>/data/cd.md` and `<page-dir>/data/cd.html` (selected colors/fonts/typography from HTML/CSS, media queries/breakpoints, headline styles by breakpoint, plus raw extracted data).
+
+A Claude Code design skill is installed to `~/.claude/skills/design-<domain>/` containing the site's color palette, typography, spacing, and responsive breakpoints. The `SKILL.md` has a concise overview; detailed data lives in `references/`. Re-scraping the same domain overwrites the existing skill.
 
 ## Notes
 

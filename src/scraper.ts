@@ -19,9 +19,11 @@ import {
 import {
   CdBrandingAssets,
   MiniCdCollector,
+  MiniCdReport,
   renderCdHtml,
   renderCdMarkdown,
 } from './mini_cd';
+import { writeSkill } from './skill_gen';
 
 class RateLimiter {
   private last = 0;
@@ -150,27 +152,44 @@ export class Scraper {
     }
     if (crawlError) throw crawlError;
 
-    try {
-      await this.writeCdFile();
-    } catch (error) {
-      this.storage.recordError({
-        url: this.options.url,
-        error: (error as Error).message,
-        phase: 'cd',
-        timestamp: new Date().toISOString(),
-      });
+    const report = this.miniCdCollector.buildReport(this.options.url);
+
+    const postTasks: Promise<void>[] = [
+      this.writeCdFile(report).catch((error) => {
+        this.storage.recordError({
+          url: this.options.url,
+          error: (error as Error).message,
+          phase: 'cd',
+          timestamp: new Date().toISOString(),
+        });
+      }),
+      this.writeAgentContext().catch((error) => {
+        this.storage.recordError({
+          url: this.options.url,
+          error: (error as Error).message,
+          phase: 'agent-context',
+          timestamp: new Date().toISOString(),
+        });
+      }),
+    ];
+
+    if (this.options.skill) {
+      const domain = new URL(this.options.url).hostname;
+      postTasks.push(
+        writeSkill(domain, this.options.url, report).then(async (skillDir) => {
+          await this.storage.logEvent({ type: 'skill-written', skillDir });
+        }).catch((error) => {
+          this.storage.recordError({
+            url: this.options.url,
+            error: (error as Error).message,
+            phase: 'skill',
+            timestamp: new Date().toISOString(),
+          });
+        }),
+      );
     }
 
-    try {
-      await this.writeAgentContext();
-    } catch (error) {
-      this.storage.recordError({
-        url: this.options.url,
-        error: (error as Error).message,
-        phase: 'agent-context',
-        timestamp: new Date().toISOString(),
-      });
-    }
+    await Promise.allSettled(postTasks);
 
     await this.storage.finalize();
 
@@ -422,8 +441,7 @@ export class Scraper {
     }
   }
 
-  private async writeCdFile(): Promise<void> {
-    const report = this.miniCdCollector.buildReport(this.options.url);
+  private async writeCdFile(report: MiniCdReport): Promise<void> {
     const rootPagePath = this.storage.pagePathForUrl(this.options.url);
     const dataDir = path.join(path.dirname(rootPagePath), 'data');
     const markdownPath = path.join(dataDir, 'cd.md');
@@ -611,9 +629,7 @@ export class Scraper {
       return;
     }
     this.lastNonTtyRenderAt = now;
-    if (done || force || !process.stdout.isTTY) {
-      console.log(message);
-    }
+    console.log(message);
   }
 
   private truncateUrl(url: string, maxLength = 72): string {
