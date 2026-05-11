@@ -119,24 +119,15 @@ scraped_sites/
         index.html
     scrape-manifest.json
     scrape-log.jsonl
+    design.md
     agent/
       context.json
       context.md
-
-~/.claude/skills/
-  design-<domain>/
-    SKILL.md
-    references/
-      colors.md
-      typography.md
-      layout.md
-      responsive.md
 ```
 
 Pages are saved under the `pages/` directory, with each page having its own `assets/` folder containing only the assets used by that page. The root page is at `pages/index.html` with assets in `pages/assets/`, and subpages are at `pages/<subpage>/index.html` with assets in `pages/<subpage>/assets/`. By default, HTML references local files in `assets/` (`assets/img`, `assets/css`, etc), and large inline `<style>` blocks are moved into `assets/css/inline/`. In `--single-file` mode, CSS/images/fonts are inlined into each HTML page.
-After each scrape, a `design.md` is written to `<page-dir>/data/design.md` containing extracted color, typography, spacing, and rounded tokens in the [google-labs-code/design.md](https://github.com/google-labs-code/design.md) format.
 
-A Claude Code design skill is installed to `~/.claude/skills/design-<domain>/` containing the site's color palette, typography, spacing, and responsive breakpoints. The `SKILL.md` has a concise overview; detailed data lives in `references/`. Re-scraping the same domain overwrites the existing skill.
+After each scrape, a `design.md` is written to both `<page-dir>/data/design.md` and the scrape root, containing extracted color, typography, spacing, and rounded tokens in the [google-labs-code/design.md](https://github.com/google-labs-code/design.md) format.
 
 ## Notes
 

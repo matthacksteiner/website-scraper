@@ -826,22 +826,3 @@ export class MiniCdCollector {
   }
 }
 
-export const renderList = (items: CountItem[], emptyText = '- none found'): string => {
-  if (items.length === 0) return emptyText;
-  return items.map((item) => `- ${item.value} (${item.count})`).join('\n');
-};
-
-export const renderInlineList = (items: CountItem[]): string => {
-  if (items.length === 0) return 'none';
-  return items.map((item) => `${item.value} (${item.count})`).join(', ');
-};
-
-export const selectItems = (
-  items: CountItem[],
-  options: { max: number; minCount: number; fallback: number },
-): CountItem[] => {
-  const filtered = items.filter((item) => item.count >= options.minCount);
-  if (filtered.length > 0) return filtered.slice(0, options.max);
-  return items.slice(0, options.fallback);
-};
-
