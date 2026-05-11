@@ -168,6 +168,37 @@ export class Storage {
     return asset;
   }
 
+  async saveGeneratedAsset(
+    url: string,
+    relativePathFromPageDir: string,
+    body: Buffer,
+    contentType: string | null,
+  ): Promise<AssetEntry> {
+    if (!this.currentPageDir) {
+      throw new Error('Must call setCurrentPageDir before saving generated assets');
+    }
+
+    const normalizedRelativePath = toPosix(relativePathFromPageDir)
+      .split('/')
+      .filter(Boolean)
+      .join(path.sep);
+    const localPath = path.join(this.currentPageDir, normalizedRelativePath);
+    await fs.mkdir(path.dirname(localPath), { recursive: true });
+    await fs.writeFile(localPath, body);
+
+    const hash = createHash('sha256').update(body).digest('hex').slice(0, 16);
+    const asset: AssetEntry = {
+      url,
+      path: localPath,
+      contentType,
+      size: body.length,
+      hash,
+    };
+    this.manifest.assets.push(asset);
+    this.registerAssetMapping(url, localPath);
+    return asset;
+  }
+
   recordError(error: ErrorEntry): void {
     this.manifest.errors.push(error);
   }

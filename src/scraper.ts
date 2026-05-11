@@ -1,6 +1,6 @@
 import { chromium, BrowserContext } from 'playwright';
 import { load } from 'cheerio';
-import { promises as fs, statSync } from 'fs';
+import { promises as fs } from 'fs';
 import path from 'path';
 import { ScrapeOptions } from './types';
 import { createScopeFilter, isHttpUrl, normalizeUrl } from './url';
@@ -16,14 +16,13 @@ import {
   buildAgentPageContext,
   renderAgentContextMarkdown,
 } from './agent_context';
-import {
-  CdBrandingAssets,
-  MiniCdCollector,
-  MiniCdReport,
-  renderCdHtml,
-  renderCdMarkdown,
-} from './mini_cd';
+import { MiniCdCollector, MiniCdReport } from './mini_cd';
+import { renderDesignMarkdown } from './design_md';
 import { writeSkill } from './skill_gen';
+import {
+  extractLargeInlineStyles,
+  INLINE_STYLE_EXTRACT_MIN_BYTES,
+} from './ai_friendly';
 
 class RateLimiter {
   private last = 0;
@@ -392,6 +391,52 @@ export class Scraper {
         this.options.singleFile,
         this.options.singleFile,
       );
+      if (!this.options.singleFile) {
+        try {
+          const extracted = await extractLargeInlineStyles({
+            html: rewrittenHtml,
+            pageUrl: item.url,
+            pagePath,
+            minBytes: INLINE_STYLE_EXTRACT_MIN_BYTES,
+            resourceMap: this.storage.resourceMap,
+            responses: responseMap,
+            saveCssAsset: async (asset) => {
+              await this.storage.saveGeneratedAsset(
+                asset.sourceUrl,
+                asset.relativePathFromPageDir,
+                asset.body,
+                asset.contentType,
+              );
+            },
+            onError: (error, context) => {
+              this.storage.recordError({
+                url: context.sourceUrl,
+                error: error.message,
+                phase: `inline-css-${context.stage}`,
+                timestamp: new Date().toISOString(),
+              });
+            },
+          });
+          rewrittenHtml = extracted.html;
+          for (const asset of extracted.extractedAssets) {
+            this.miniCdCollector.addCss(asset.content);
+            await this.storage.logEvent({
+              type: 'inline-style-extracted',
+              url: item.url,
+              sourceUrl: asset.sourceUrl,
+              path: path.join(path.dirname(pagePath), asset.relativePathFromPageDir),
+              bytes: asset.bytes,
+            });
+          }
+        } catch (error) {
+          this.storage.recordError({
+            url: item.url,
+            error: (error as Error).message,
+            phase: 'inline-css-extract',
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }
       rewrittenHtml = rewriteHtml(
         rewrittenHtml,
         item.url,
@@ -444,20 +489,14 @@ export class Scraper {
   private async writeCdFile(report: MiniCdReport): Promise<void> {
     const rootPagePath = this.storage.pagePathForUrl(this.options.url);
     const dataDir = path.join(path.dirname(rootPagePath), 'data');
-    const markdownPath = path.join(dataDir, 'cd.md');
-    const htmlPath = path.join(dataDir, 'cd.html');
-    const branding = await this.extractBrandingAssets(rootPagePath, htmlPath);
+    const designPath = path.join(dataDir, 'design.md');
 
     await fs.mkdir(dataDir, { recursive: true });
-    await Promise.all([
-      fs.writeFile(markdownPath, renderCdMarkdown(report), 'utf8'),
-      fs.writeFile(htmlPath, renderCdHtml(report, branding), 'utf8'),
-    ]);
+    await fs.writeFile(designPath, renderDesignMarkdown(report), 'utf8');
 
     await this.storage.logEvent({
-      type: 'cd-written',
-      markdownPath,
-      htmlPath,
+      type: 'design-written',
+      designPath,
     });
   }
 
@@ -484,94 +523,6 @@ export class Scraper {
       contextJsonPath,
       contextMdPath,
     });
-  }
-
-  private async extractBrandingAssets(
-    rootPagePath: string,
-    cdHtmlPath: string,
-  ): Promise<CdBrandingAssets> {
-    try {
-      const html = await fs.readFile(rootPagePath, 'utf8');
-      const $ = load(html);
-
-      const faviconRaw =
-        this.pickFirstAttr(
-          $,
-          [
-            'link[rel~="icon"][href]',
-            'link[rel="shortcut icon"][href]',
-            'link[rel="apple-touch-icon"][href]',
-          ],
-          'href',
-        ) || this.pickFirstAttr($, ['meta[property="og:image"][content]'], 'content');
-
-      const logoRaw = this.pickFirstAttr(
-        $,
-        [
-          'header a[class*="logo" i] img[src]',
-          'a[class*="logo" i] img[src]',
-          'img[alt*="logo" i][src]',
-          'img[src*="logo" i]',
-          'header img[src]',
-        ],
-        'src',
-      );
-
-      return {
-        faviconHref: this.resolveBrandAssetPath(faviconRaw, rootPagePath, cdHtmlPath),
-        logoHref: this.resolveBrandAssetPath(logoRaw, rootPagePath, cdHtmlPath),
-      };
-    } catch {
-      return {};
-    }
-  }
-
-  private pickFirstAttr(
-    $: ReturnType<typeof load>,
-    selectors: string[],
-    attribute: string,
-  ): string | null {
-    for (const selector of selectors) {
-      const element = $(selector).first();
-      const value = element.attr(attribute);
-      if (value && value.trim()) return value.trim();
-    }
-    return null;
-  }
-
-  private resolveBrandAssetPath(
-    rawValue: string | null,
-    rootPagePath: string,
-    cdHtmlPath: string,
-  ): string | null {
-    if (!rawValue) return null;
-    const value = rawValue.trim();
-    if (!value) return null;
-    if (value.startsWith('data:')) return value;
-    if (value.startsWith('http://') || value.startsWith('https://')) return value;
-    if (value.startsWith('//')) return `https:${value}`;
-
-    const hashIndex = value.indexOf('#');
-    const queryIndex = value.indexOf('?');
-    let splitIndex = -1;
-    if (hashIndex !== -1 && queryIndex !== -1) splitIndex = Math.min(hashIndex, queryIndex);
-    else splitIndex = Math.max(hashIndex, queryIndex);
-    const suffix = splitIndex === -1 ? '' : value.slice(splitIndex);
-    const filePart = splitIndex === -1 ? value : value.slice(0, splitIndex);
-    if (!filePart) return null;
-
-    if (filePart.startsWith('/')) return value;
-
-    const absolutePath = path.resolve(path.dirname(rootPagePath), filePart);
-    try {
-      const stat = statSync(absolutePath);
-      if (!stat.isFile()) return value;
-    } catch {
-      return value;
-    }
-
-    const relative = path.relative(path.dirname(cdHtmlPath), absolutePath);
-    return `${toPosix(relative || '.')}${suffix}`;
   }
 
   private startProgressTicker(): void {

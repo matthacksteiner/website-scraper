@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'bun:test';
-import { MiniCdCollector, renderCdHtml, renderCdMarkdown } from '../src/mini_cd';
+import { MiniCdCollector } from '../src/mini_cd';
 
 describe('MiniCdCollector', () => {
   it('extracts design tokens, breakpoints and headline styles', () => {
@@ -70,15 +70,5 @@ describe('MiniCdCollector', () => {
 
     expect(report.stats.html.pages).toBe(1);
     expect(report.stats.html.externalStylesheets).toBe(1);
-
-    const markdown = renderCdMarkdown(report);
-    expect(markdown).toContain('# CD');
-    expect(markdown).toContain('## Breakpoints');
-    expect(markdown).toContain('## Headings by Breakpoint');
-
-    const html = renderCdHtml(report);
-    expect(html).toContain('<title>CD Report</title>');
-    expect(html).toContain('Overview summary');
-    expect(html).toContain('Headlines by Breakpoint');
   });
 });

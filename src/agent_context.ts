@@ -15,6 +15,8 @@ export interface AgentPageContext {
   elements: number;
   stylesheets: number;
   cssFiles: string[];
+  inlineCssFiles: string[];
+  inlineCssExtracted: number;
   images: number;
   scripts: number;
 }
@@ -28,6 +30,7 @@ export interface AgentContextDocument {
     htmlBytes: number;
     elements: number;
     stylesheets: number;
+    inlineCssExtracted: number;
     images: number;
     scripts: number;
   };
@@ -103,6 +106,7 @@ export const buildAgentPageContext = (
       .map((absolute) => toPosix(path.relative(input.outputDir, absolute))),
     12,
   );
+  const inlineCssFiles = cssFiles.filter((cssPath) => cssPath.includes('/assets/css/inline/'));
 
   return {
     url: input.url,
@@ -116,6 +120,8 @@ export const buildAgentPageContext = (
     elements: $('*').length,
     stylesheets: $('link[rel~="stylesheet"][href], style').length,
     cssFiles,
+    inlineCssFiles,
+    inlineCssExtracted: inlineCssFiles.length,
     images: $('img[src], picture source[srcset], svg image').length,
     scripts: $('script').length,
   };
@@ -137,6 +143,7 @@ export const buildAgentContextDocument = (
       acc.htmlBytes += page.htmlBytes;
       acc.elements += page.elements;
       acc.stylesheets += page.stylesheets;
+      acc.inlineCssExtracted += page.inlineCssExtracted;
       acc.images += page.images;
       acc.scripts += page.scripts;
       return acc;
@@ -146,6 +153,7 @@ export const buildAgentContextDocument = (
       htmlBytes: 0,
       elements: 0,
       stylesheets: 0,
+      inlineCssExtracted: 0,
       images: 0,
       scripts: 0,
     },
@@ -169,12 +177,14 @@ export const renderAgentContextMarkdown = (doc: AgentContextDocument): string =>
   lines.push(`- Root page: ${doc.rootPage}`);
   lines.push(`- Pages: ${doc.totals.pages}`);
   lines.push(`- Total HTML bytes: ${doc.totals.htmlBytes}`);
+  lines.push(`- Extracted inline CSS files: ${doc.totals.inlineCssExtracted}`);
   lines.push('');
   lines.push('## Start Here');
   lines.push('');
   lines.push('1. Open root page HTML first.');
   lines.push('2. Use `pages[]` in `agent/context.json` to jump directly to relevant subpages.');
-  lines.push('3. Avoid reading `scrape-log.jsonl` unless debugging capture issues.');
+  lines.push('3. For large pages, edit `assets/css/inline/*.css` before touching giant HTML blocks.');
+  lines.push('4. Avoid reading `scrape-log.jsonl` unless debugging capture issues.');
   lines.push('');
   lines.push('## Page Index');
   lines.push('');
@@ -183,8 +193,9 @@ export const renderAgentContextMarkdown = (doc: AgentContextDocument): string =>
     const title = page.title || '(untitled)';
     const headingPreview = page.headings.slice(0, 2).join(' | ') || '-';
     const cssPreview = page.cssFiles.slice(0, 2).join(' | ') || '-';
+    const inlineCssPreview = page.inlineCssFiles.slice(0, 2).join(' | ') || '-';
     lines.push(
-      `- depth ${page.depth} | ${page.path} | ${title} | h: ${headingPreview} | css: ${cssPreview}`,
+      `- depth ${page.depth} | ${page.path} | ${title} | h: ${headingPreview} | css: ${cssPreview} | inline-css:${page.inlineCssExtracted} (${inlineCssPreview})`,
     );
   }
 
