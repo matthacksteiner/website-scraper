@@ -16,7 +16,6 @@ export interface ScrapeOptions {
   concurrency: number;
   userAgent: string;
   timeoutMs: number;
-  skill: boolean;
 }
 
 export interface PageEntry {

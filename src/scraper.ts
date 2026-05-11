@@ -18,7 +18,6 @@ import {
 } from './agent_context';
 import { MiniCdCollector, MiniCdReport } from './mini_cd';
 import { renderDesignMarkdown } from './design_md';
-import { writeSkill } from './skill_gen';
 import {
   extractLargeInlineStyles,
   INLINE_STYLE_EXTRACT_MIN_BYTES,
@@ -171,22 +170,6 @@ export class Scraper {
         });
       }),
     ];
-
-    if (this.options.skill) {
-      const domain = new URL(this.options.url).hostname;
-      postTasks.push(
-        writeSkill(this.options.output, domain, this.options.url, report).then(async (skillDir) => {
-          await this.storage.logEvent({ type: 'skill-written', skillDir });
-        }).catch((error) => {
-          this.storage.recordError({
-            url: this.options.url,
-            error: (error as Error).message,
-            phase: 'skill',
-            timestamp: new Date().toISOString(),
-          });
-        }),
-      );
-    }
 
     await Promise.allSettled(postTasks);
 

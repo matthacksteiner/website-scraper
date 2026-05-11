@@ -57,7 +57,6 @@ bun run format
 - Manifest and JSONL event log
 - Auto-generated `design.md` in `<page-dir>/data/` following the [google-labs-code/design.md](https://github.com/google-labs-code/design.md) spec (YAML front matter with `colors`, `typography`, `rounded`, `spacing` tokens + canonical markdown sections)
 - Compact agent index in `agent/context.json` + `agent/context.md` for faster agent onboarding
-- Auto-generated Claude Code design skill in `~/.claude/skills/design-<domain>/` with colors, typography, spacing, and breakpoints
 - LLM-friendly output by default (large inline style blocks are extracted to `assets/css/inline/*.css`)
 
 ## Usage
@@ -83,7 +82,6 @@ bun run start --url https://example.com --subpages --scope same-origin
 - `--concurrency <number>` (default: 2)
 - `--user-agent <string>`
 - `--timeout-ms <number>` (default: 30000)
-- `--skill` / `--no-skill` (default: skill) — generate a Claude Code design skill
 
 ## Agent-Optimized Workflow
 
@@ -93,7 +91,6 @@ The scraper now applies LLM-friendly defaults automatically:
 - Large inline `<style>` blocks are extracted into `assets/css/inline/` (default threshold: 32 KB).
 - `agent/context.json` + `agent/context.md` are always generated.
 - CD summary files are generated with lightweight extraction (no expensive computed-style pass).
-- A design skill is installed to `~/.claude/skills/design-<domain>/` so Claude Code can reference the scraped site's design tokens in future conversations. Disable with `--no-skill`.
 
 For redesign-focused runs:
 
@@ -101,7 +98,7 @@ For redesign-focused runs:
 bun run start --url https://example.com --subpages
 ```
 
-Then start from `agent/context.md` / `agent/context.json`. The design skill is automatically available in Claude Code for matching the site's visual style.
+Then start from `agent/context.md` / `agent/context.json`.
 
 ## Output
 
@@ -119,7 +116,6 @@ scraped_sites/
         index.html
     scrape-manifest.json
     scrape-log.jsonl
-    design.md
     agent/
       context.json
       context.md
@@ -127,7 +123,7 @@ scraped_sites/
 
 Pages are saved under the `pages/` directory, with each page having its own `assets/` folder containing only the assets used by that page. The root page is at `pages/index.html` with assets in `pages/assets/`, and subpages are at `pages/<subpage>/index.html` with assets in `pages/<subpage>/assets/`. By default, HTML references local files in `assets/` (`assets/img`, `assets/css`, etc), and large inline `<style>` blocks are moved into `assets/css/inline/`. In `--single-file` mode, CSS/images/fonts are inlined into each HTML page.
 
-After each scrape, a `design.md` is written to both `<page-dir>/data/design.md` and the scrape root, containing extracted color, typography, spacing, and rounded tokens in the [google-labs-code/design.md](https://github.com/google-labs-code/design.md) format.
+After each scrape, a `design.md` is written to `<page-dir>/data/design.md` containing extracted color, typography, spacing, and rounded tokens in the [google-labs-code/design.md](https://github.com/google-labs-code/design.md) format.
 
 ## Notes
 

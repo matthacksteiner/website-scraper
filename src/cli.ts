@@ -48,9 +48,7 @@ program
   .option('--delay-ms <number>', 'Delay between page fetches', '500')
   .option('--concurrency <number>', 'Concurrent page fetches', '2')
   .option('--user-agent <string>', 'Custom user-agent string')
-  .option('--timeout-ms <number>', 'Navigation timeout in ms', '30000')
-  .option('--skill', 'Generate a Claude Code design skill (default)', true)
-  .option('--no-skill', 'Skip design skill generation');
+  .option('--timeout-ms <number>', 'Navigation timeout in ms', '30000');
 
 const main = async () => {
   const rawArgs = process.argv.slice(2);
@@ -211,7 +209,6 @@ const main = async () => {
     concurrency: parseIntOption(opts.concurrency, 2, 1),
     userAgent: opts.userAgent || DEFAULT_USER_AGENT,
     timeoutMs: parseIntOption(opts.timeoutMs, 30000, 1),
-    skill: Boolean(opts.skill),
   };
 
   const scraper = new Scraper(options);
