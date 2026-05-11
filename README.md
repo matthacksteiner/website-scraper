@@ -111,9 +111,8 @@ scraped_sites/
           img/
           css/
             inline/
-        data/
-          design.md
         index.html
+    design.md
     scrape-manifest.json
     scrape-log.jsonl
     agent/
@@ -123,7 +122,7 @@ scraped_sites/
 
 Pages are saved under the `pages/` directory, with each page having its own `assets/` folder containing only the assets used by that page. The root page is at `pages/index.html` with assets in `pages/assets/`, and subpages are at `pages/<subpage>/index.html` with assets in `pages/<subpage>/assets/`. By default, HTML references local files in `assets/` (`assets/img`, `assets/css`, etc), and large inline `<style>` blocks are moved into `assets/css/inline/`. In `--single-file` mode, CSS/images/fonts are inlined into each HTML page.
 
-After each scrape, a `design.md` is written to `<page-dir>/data/design.md` containing extracted color, typography, spacing, and rounded tokens in the [google-labs-code/design.md](https://github.com/google-labs-code/design.md) format.
+After each scrape, a `design.md` is written to the scrape root containing extracted color, typography, spacing, and rounded tokens in the [google-labs-code/design.md](https://github.com/google-labs-code/design.md) format.
 
 ## Notes
 

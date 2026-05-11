@@ -153,11 +153,11 @@ export class Scraper {
     const report = this.miniCdCollector.buildReport(this.options.url);
 
     const postTasks: Promise<void>[] = [
-      this.writeCdFile(report).catch((error) => {
+      this.writeDesignFile(report).catch((error) => {
         this.storage.recordError({
           url: this.options.url,
           error: (error as Error).message,
-          phase: 'cd',
+          phase: 'design',
           timestamp: new Date().toISOString(),
         });
       }),
@@ -469,14 +469,9 @@ export class Scraper {
     }
   }
 
-  private async writeCdFile(report: MiniCdReport): Promise<void> {
-    const rootPagePath = this.storage.pagePathForUrl(this.options.url);
-    const dataDir = path.join(path.dirname(rootPagePath), 'data');
-    const designPath = path.join(dataDir, 'design.md');
-
-    await fs.mkdir(dataDir, { recursive: true });
+  private async writeDesignFile(report: MiniCdReport): Promise<void> {
+    const designPath = path.join(this.options.output, 'design.md');
     await fs.writeFile(designPath, renderDesignMarkdown(report), 'utf8');
-
     await this.storage.logEvent({
       type: 'design-written',
       designPath,
