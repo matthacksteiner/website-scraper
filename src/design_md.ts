@@ -20,7 +20,7 @@ interface TypographyToken {
   fontFamily?: string;
   fontSize?: string;
   fontWeight?: string;
-  lineHeight?: string;
+  lineHeight?: string | number;
 }
 
 interface DimensionEntry {
@@ -70,6 +70,37 @@ const luminance = (hex: string): number => {
 };
 
 const isHexColor = (value: string): boolean => /^#[0-9a-f]{6}$/i.test(value);
+const isUnitlessNumber = (value: string): boolean => /^-?\d*\.?\d+$/.test(value);
+const isValidDimension = (value: string): boolean =>
+  /^-?(?:\d+|\d*\.\d+)(?:px|rem|em)$/.test(value);
+
+const normalizeDimension = (value: string | undefined): string | undefined => {
+  if (!value) return undefined;
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed) return undefined;
+  if (trimmed === '0') return '0px';
+  if (isValidDimension(trimmed)) return trimmed;
+  if (isUnitlessNumber(trimmed)) return `${trimmed}px`;
+  return undefined;
+};
+
+const normalizeLineHeight = (value: string | undefined): string | number | undefined => {
+  if (!value) return undefined;
+  const trimmed = value.trim().toLowerCase();
+  if (!trimmed || trimmed === 'normal') return undefined;
+  if (isUnitlessNumber(trimmed)) return Number(trimmed);
+  return normalizeDimension(trimmed);
+};
+
+const normalizeFontWeight = (value: string | undefined): string | undefined => {
+  if (!value) return undefined;
+  const normalized = value.trim().toLowerCase();
+  if (!normalized) return undefined;
+  if (normalized === 'normal') return '400';
+  if (normalized === 'bold') return '700';
+  if (/^[1-9]00$/.test(normalized)) return normalized;
+  return undefined;
+};
 
 const isNearNeutral = (hex: string): boolean => {
   if (NEUTRAL_HEX.has(hex.toLowerCase())) return true;
@@ -80,8 +111,7 @@ const pickPrimary = (colors: CountItem[]): string | undefined => {
   const chromatic = colors.filter((c) => isHexColor(c.value) && !isNearNeutral(c.value));
   if (chromatic.length === 0) return colors.find((c) => isHexColor(c.value))?.value;
   return chromatic.sort((a, b) => {
-    const score = (item: CountItem) =>
-      item.count * (0.5 + saturation(item.value));
+    const score = (item: CountItem) => item.count * (0.5 + saturation(item.value));
     return score(b) - score(a);
   })[0]?.value;
 };
@@ -117,12 +147,7 @@ const pickColors = (report: MiniCdReport): ColorTokens => {
     .sort((a, b) => b.count - a.count)[0]?.value;
   const border = report.colors.border.find((c) => isHexColor(c.value))?.value;
   const secondary = all
-    .filter(
-      (c) =>
-        isHexColor(c.value) &&
-        !isNearNeutral(c.value) &&
-        c.value !== primary,
-    )
+    .filter((c) => isHexColor(c.value) && !isNearNeutral(c.value) && c.value !== primary)
     .sort((a, b) => b.count - a.count)[0]?.value;
   const accent = all
     .filter(
@@ -132,8 +157,9 @@ const pickColors = (report: MiniCdReport): ColorTokens => {
         c.value !== primary &&
         c.value !== secondary,
     )
-    .sort((a, b) => (saturation(b.value) - saturation(a.value)) || b.count - a.count)[0]
-    ?.value;
+    .sort(
+      (a, b) => saturation(b.value) - saturation(a.value) || b.count - a.count,
+    )[0]?.value;
 
   return { primary, secondary, background, surface, text, textMuted, border, accent };
 };
@@ -147,7 +173,9 @@ const sortPxValues = (items: CountItem[]): { value: string; px: number }[] => {
     if (!Number.isFinite(num)) continue;
     const unit = (match[2] || '').toLowerCase();
     const px = unit === 'rem' || unit === 'em' ? num * 16 : num;
-    parsed.push({ value: item.value, px });
+    const value = normalizeDimension(item.value);
+    if (!value) continue;
+    parsed.push({ value, px });
   }
   return parsed.sort((a, b) => a.px - b.px);
 };
@@ -207,10 +235,12 @@ const pickHeadingTypography = (
   const base = entries.find((e) => e.breakpoint === 'base') ?? entries[0];
   if (!base) return {};
   return {
-    fontFamily: base.fontFamilies[0] ? cleanFontFamily(base.fontFamilies[0].value) : undefined,
-    fontSize: base.fontSizes[0]?.value,
-    fontWeight: base.fontWeights[0]?.value,
-    lineHeight: base.lineHeights[0]?.value,
+    fontFamily: base.fontFamilies[0]
+      ? cleanFontFamily(base.fontFamilies[0].value)
+      : undefined,
+    fontSize: normalizeDimension(base.fontSizes[0]?.value),
+    fontWeight: normalizeFontWeight(base.fontWeights[0]?.value),
+    lineHeight: normalizeLineHeight(base.lineHeights[0]?.value),
   };
 };
 
@@ -220,25 +250,35 @@ const buildTypographyTokens = (report: MiniCdReport): Record<string, TypographyT
   const heading = pickHeadingTypography(report, 'h2');
   const body: TypographyToken = {
     fontFamily: brandFont,
-    fontSize: report.typography.fontSizes.find((s) => /^(14|15|16|17|18)px$/.test(s.value))
-      ?.value ?? report.typography.fontSizes[0]?.value,
+    fontSize:
+      normalizeDimension(
+        report.typography.fontSizes.find((s) => /^(14|15|16|17|18)px$/.test(s.value))
+          ?.value,
+      ) ?? normalizeDimension(report.typography.fontSizes[0]?.value),
     fontWeight:
-      report.typography.fontWeights.find((w) => /^(400|normal)$/.test(w.value))?.value ??
-      report.typography.fontWeights[0]?.value,
-    lineHeight: report.typography.lineHeights[0]?.value,
+      normalizeFontWeight(
+        report.typography.fontWeights.find((w) => /^(400|normal)$/.test(w.value))?.value,
+      ) ?? normalizeFontWeight(report.typography.fontWeights[0]?.value),
+    lineHeight: normalizeLineHeight(report.typography.lineHeights[0]?.value),
   };
   const caption: TypographyToken = {
     fontFamily: brandFont,
-    fontSize: report.typography.fontSizes.find((s) => /^(11|12|13)px$/.test(s.value))?.value,
+    fontSize: normalizeDimension(
+      report.typography.fontSizes.find((s) => /^(11|12|13)px$/.test(s.value))?.value,
+    ),
     fontWeight: body.fontWeight,
     lineHeight: body.lineHeight,
   };
 
   const out: Record<string, TypographyToken> = {};
-  if (Object.values(display).some(Boolean)) out.display = withFallbackFont(display, brandFont);
-  if (Object.values(heading).some(Boolean)) out.heading = withFallbackFont(heading, brandFont);
-  if (Object.values(body).some(Boolean)) out.body = body;
-  if (Object.values(caption).some(Boolean)) out.caption = caption;
+  if (Object.values(display).some(Boolean)) {
+    out['headline-display'] = withFallbackFont(display, brandFont);
+  }
+  if (Object.values(heading).some(Boolean)) {
+    out['headline-md'] = withFallbackFont(heading, brandFont);
+  }
+  if (Object.values(body).some(Boolean)) out['body-md'] = body;
+  if (Object.values(caption).some(Boolean)) out['body-sm'] = caption;
   return out;
 };
 
@@ -251,10 +291,15 @@ const withFallbackFont = (
 });
 
 const yamlString = (value: string): string => {
-  if (/^[A-Za-z0-9._\-\/]+$/.test(value) && !/^(true|false|null|yes|no)$/i.test(value)) {
+  if (/^[A-Za-z0-9._/-]+$/.test(value) && !/^(true|false|null|yes|no)$/i.test(value)) {
     return value;
   }
   return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
+};
+
+const yamlScalar = (value: string | number): string => {
+  if (typeof value === 'number') return String(value);
+  return yamlString(value);
 };
 
 const renderRecord = (
@@ -292,8 +337,8 @@ const renderTypographyBlock = (
     if (token.fontWeight) {
       lines.push(`${indent}    fontWeight: ${yamlString(token.fontWeight)}`);
     }
-    if (token.lineHeight) {
-      lines.push(`${indent}    lineHeight: ${yamlString(token.lineHeight)}`);
+    if (token.lineHeight !== undefined) {
+      lines.push(`${indent}    lineHeight: ${yamlScalar(token.lineHeight)}`);
     }
   }
   return lines;
@@ -324,7 +369,7 @@ const renderTypographyList = (tokens: Record<string, TypographyToken>): string =
         t.fontFamily ? `family: \`${t.fontFamily}\`` : null,
         t.fontSize ? `size: \`${t.fontSize}\`` : null,
         t.fontWeight ? `weight: \`${t.fontWeight}\`` : null,
-        t.lineHeight ? `line-height: \`${t.lineHeight}\`` : null,
+        t.lineHeight !== undefined ? `line-height: \`${t.lineHeight}\`` : null,
       ].filter(Boolean);
       return `- **${key}** — ${parts.join(', ')}`;
     })
@@ -434,8 +479,8 @@ export const renderDesignMarkdown = (report: MiniCdReport): string => {
     '',
     "## Do's and Don'ts",
     '',
-    "- **Do** use `colors.primary` for primary actions and links.",
-    "- **Do** pair `typography.display` with hero copy and `typography.body` for prose.",
+    '- **Do** use `colors.primary` for primary actions and links.',
+    '- **Do** pair `typography.headline-display` with hero copy and `typography.body-md` for prose.',
     "- **Don't** introduce colors outside the palette without updating this file.",
     "- **Don't** use raw pixel values for spacing — pick from the `spacing` scale.",
     '',

@@ -96,8 +96,7 @@ const LENGTH_TOKEN_REGEX =
 const FONT_SHORTHAND_REGEX =
   /(?:^|\s)(xx-small|x-small|small|medium|large|x-large|xx-large|xxx-large|smaller|larger|-?(?:\d+|\d*\.\d+)(?:px|pt|pc|in|cm|mm|em|rem|ex|ch|vw|vh|vmin|vmax|%))(?:\s*\/\s*([^\s,]+))?\s+(.+)$/i;
 const FONT_WEIGHT_REGEX = /\b(?:[1-9]00|normal|bold|bolder|lighter)\b/gi;
-const HEADING_SELECTOR_REGEX =
-  /(?:^|[\s>+~,(])h([1-6])(?=[\s>+~.#:[,(]|$)/gi;
+const HEADING_SELECTOR_REGEX = /(?:^|[\s>+~,(])h([1-6])(?=[\s>+~.#:[,(]|$)/gi;
 
 const SPACING_PROPS = new Set([
   'margin',
@@ -171,15 +170,40 @@ const normalizeHex = (value: string): string => {
   const lower = value.toLowerCase();
   if (lower.length === 4 || lower.length === 5) {
     const chars = lower.slice(1).split('');
-    return `#${chars.map((char) => `${char}${char}`).join('')}`;
+    return `#${chars
+      .slice(0, 3)
+      .map((char) => `${char}${char}`)
+      .join('')}`;
   }
-  return lower;
+  return lower.slice(0, 7);
+};
+
+const clampRgbChannel = (value: string): number | null => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.max(0, Math.min(255, Math.round(parsed)));
+};
+
+const rgbToHex = (value: string): string | null => {
+  const match = value.match(/^rgba?\((.+)\)$/i);
+  if (!match) return null;
+  const channels = match[1]
+    .replace(/\s*\/\s*/g, ',')
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (channels.length < 3) return null;
+  if (channels[3] !== undefined && Number(channels[3]) === 0) return null;
+  const rgb = channels.slice(0, 3).map(clampRgbChannel);
+  if (rgb.some((channel) => channel === null)) return null;
+  return `#${rgb.map((channel) => channel!.toString(16).padStart(2, '0')).join('')}`;
 };
 
 const normalizeColorToken = (value: string): string | null => {
   const compact = value.replace(/\s+/g, '').toLowerCase();
   if (compact.includes('var(')) return null;
   if (compact.startsWith('#')) return normalizeHex(compact);
+  if (compact.startsWith('rgb')) return rgbToHex(compact);
   return compact;
 };
 
@@ -359,8 +383,10 @@ export class MiniCdCollector {
     this.mergeRecordIntoMap(snapshot.used.typography.fontSizes, this.fontSizes, (value) =>
       normalizeLengthToken(value),
     );
-    this.mergeRecordIntoMap(snapshot.used.typography.fontWeights, this.fontWeights, (value) =>
-      normalizeFontWeightToken(value),
+    this.mergeRecordIntoMap(
+      snapshot.used.typography.fontWeights,
+      this.fontWeights,
+      (value) => normalizeFontWeightToken(value),
     );
     this.mergeRecordIntoMap(
       snapshot.used.typography.lineHeights,
@@ -370,8 +396,10 @@ export class MiniCdCollector {
     this.mergeRecordIntoMap(snapshot.used.layout.spacing, this.spacing, (value) =>
       normalizeLengthToken(value),
     );
-    this.mergeRecordIntoMap(snapshot.used.layout.borderRadius, this.borderRadius, (value) =>
-      normalizeLengthToken(value),
+    this.mergeRecordIntoMap(
+      snapshot.used.layout.borderRadius,
+      this.borderRadius,
+      (value) => normalizeLengthToken(value),
     );
 
     for (const [rawFamily, count] of Object.entries(
@@ -381,11 +409,18 @@ export class MiniCdCollector {
     }
 
     for (const headingSnapshot of snapshot.headings || []) {
-      const bucket = this.headingBucket(headingSnapshot.heading, headingSnapshot.breakpoint);
-      this.mergeRecordIntoMap(headingSnapshot.fontFamilies, bucket.fontFamilies, (value) => {
-        const family = sanitizeFontFamily(value);
-        return family || null;
-      });
+      const bucket = this.headingBucket(
+        headingSnapshot.heading,
+        headingSnapshot.breakpoint,
+      );
+      this.mergeRecordIntoMap(
+        headingSnapshot.fontFamilies,
+        bucket.fontFamilies,
+        (value) => {
+          const family = sanitizeFontFamily(value);
+          return family || null;
+        },
+      );
       this.mergeRecordIntoMap(headingSnapshot.fontSizes, bucket.fontSizes, (value) =>
         normalizeLengthToken(value),
       );
@@ -484,10 +519,7 @@ export class MiniCdCollector {
         /(^|[\s>+~,(])([a-z][a-z0-9-]*)/gi,
       );
       this.selectorStats.idSelectors += countMatches(selector, /#[_a-zA-Z-][\w-]*/g);
-      this.selectorStats.classSelectors += countMatches(
-        selector,
-        /\.[_a-zA-Z-][\w-]*/g,
-      );
+      this.selectorStats.classSelectors += countMatches(selector, /\.[_a-zA-Z-][\w-]*/g);
       this.selectorStats.attributeSelectors += countMatches(selector, /\[[^\]]+\]/g);
       this.selectorStats.pseudoSelectors += countMatches(selector, /:{1,2}[a-zA-Z-]+/g);
     }
@@ -825,4 +857,3 @@ export class MiniCdCollector {
     );
   }
 }
-

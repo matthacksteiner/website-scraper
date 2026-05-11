@@ -36,7 +36,11 @@ describe('extractLargeInlineStyles', () => {
     const largeCss2 = '.b{background:#ffffff;} '.repeat(2400);
     const html = `<html><head><style id="s1">${largeCss1}</style><style id="small">.x{color:red;}</style><style id="s2">${largeCss2}</style></head></html>`;
 
-    const saved: Array<{ sourceUrl: string; relativePathFromPageDir: string; body: Buffer }> = [];
+    const saved: Array<{
+      sourceUrl: string;
+      relativePathFromPageDir: string;
+      body: Buffer;
+    }> = [];
 
     const result = await extractLargeInlineStyles({
       html,
@@ -60,8 +64,12 @@ describe('extractLargeInlineStyles', () => {
     const hash1 = createHash('sha1').update(largeCss1).digest('hex').slice(0, 12);
     const hash2 = createHash('sha1').update(largeCss2).digest('hex').slice(0, 12);
 
-    expect(saved[0].relativePathFromPageDir).toBe(`assets/css/inline/inline-1-${hash1}.css`);
-    expect(saved[1].relativePathFromPageDir).toBe(`assets/css/inline/inline-2-${hash2}.css`);
+    expect(saved[0].relativePathFromPageDir).toBe(
+      `assets/css/inline/inline-1-${hash1}.css`,
+    );
+    expect(saved[1].relativePathFromPageDir).toBe(
+      `assets/css/inline/inline-2-${hash2}.css`,
+    );
     expect(saved[0].sourceUrl).toContain(`/inline-1-${hash1}.css`);
     expect(saved[1].sourceUrl).toContain(`/inline-2-${hash2}.css`);
 

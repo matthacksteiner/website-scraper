@@ -24,6 +24,7 @@
     "serve": "bun dist/serve.js",
     "serve:latest": "bun dist/serve.js --latest",
     "postprocess": "bun dist/postprocess.js",
+    "design:lint": "bunx @google/design.md lint",
     "test": "bun test"
   },
   "dependencies": {

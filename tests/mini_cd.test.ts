@@ -43,22 +43,37 @@ describe('MiniCdCollector', () => {
 
     const report = collector.buildReport('https://example.com');
 
+    expect(report.colors.all.some((entry) => entry.value === '#ff6600')).toBeTrue();
     expect(report.colors.all.some((entry) => entry.value === '#ffffff')).toBeTrue();
-    expect(report.colors.all.some((entry) => entry.value === '#00000080')).toBeTrue();
+    expect(report.colors.all.some((entry) => entry.value === '#000000')).toBeTrue();
     expect(report.colors.all.some((entry) => entry.value === '#aabbcc')).toBeTrue();
     expect(report.colors.text.some((entry) => entry.value === '#aabbcc')).toBeTrue();
     expect(report.fonts.brand.some((entry) => entry.value === 'Open Sans')).toBeTrue();
-    expect(report.fonts.brand.some((entry) => entry.value === 'Playfair Display')).toBeTrue();
+    expect(
+      report.fonts.brand.some((entry) => entry.value === 'Playfair Display'),
+    ).toBeTrue();
     expect(report.fonts.generic.some((entry) => entry.value === 'sans-serif')).toBeTrue();
-    expect(report.typography.fontSizes.some((entry) => entry.value === '32px')).toBeTrue();
-    expect(report.typography.fontSizes.some((entry) => entry.value === '14px')).toBeTrue();
-    expect(report.typography.fontWeights.some((entry) => entry.value === '700')).toBeTrue();
-    expect(report.typography.lineHeights.some((entry) => entry.value === '40px')).toBeTrue();
+    expect(
+      report.typography.fontSizes.some((entry) => entry.value === '32px'),
+    ).toBeTrue();
+    expect(
+      report.typography.fontSizes.some((entry) => entry.value === '14px'),
+    ).toBeTrue();
+    expect(
+      report.typography.fontWeights.some((entry) => entry.value === '700'),
+    ).toBeTrue();
+    expect(
+      report.typography.lineHeights.some((entry) => entry.value === '40px'),
+    ).toBeTrue();
     expect(report.layout.spacing.some((entry) => entry.value === '16px')).toBeTrue();
     expect(report.layout.spacing.some((entry) => entry.value === '8px')).toBeTrue();
     expect(report.layout.borderRadius.some((entry) => entry.value === '12px')).toBeTrue();
-    expect(report.media.queries.some((entry) => entry.value === '(max-width: 768px)')).toBeTrue();
-    expect(report.media.breakpoints.some((entry) => entry.value === 'max-width 768px')).toBeTrue();
+    expect(
+      report.media.queries.some((entry) => entry.value === '(max-width: 768px)'),
+    ).toBeTrue();
+    expect(
+      report.media.breakpoints.some((entry) => entry.value === 'max-width 768px'),
+    ).toBeTrue();
     expect(
       report.headings.some(
         (entry) =>

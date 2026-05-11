@@ -106,7 +106,9 @@ export const buildAgentPageContext = (
       .map((absolute) => toPosix(path.relative(input.outputDir, absolute))),
     12,
   );
-  const inlineCssFiles = cssFiles.filter((cssPath) => cssPath.includes('/assets/css/inline/'));
+  const inlineCssFiles = cssFiles.filter((cssPath) =>
+    cssPath.includes('/assets/css/inline/'),
+  );
 
   return {
     url: input.url,
@@ -181,10 +183,15 @@ export const renderAgentContextMarkdown = (doc: AgentContextDocument): string =>
   lines.push('');
   lines.push('## Start Here');
   lines.push('');
-  lines.push('1. Open root page HTML first.');
-  lines.push('2. Use `pages[]` in `agent/context.json` to jump directly to relevant subpages.');
-  lines.push('3. For large pages, edit `assets/css/inline/*.css` before touching giant HTML blocks.');
-  lines.push('4. Avoid reading `scrape-log.jsonl` unless debugging capture issues.');
+  lines.push('1. Read root `design.md` first; it is the design contract for AI edits.');
+  lines.push('2. Open root page HTML after the design contract.');
+  lines.push(
+    '3. Use `pages[]` in `agent/context.json` to jump directly to relevant subpages.',
+  );
+  lines.push(
+    '4. For large pages, edit `assets/css/inline/*.css` before touching giant HTML blocks.',
+  );
+  lines.push('5. Avoid reading `scrape-log.jsonl` unless debugging capture issues.');
   lines.push('');
   lines.push('## Page Index');
   lines.push('');

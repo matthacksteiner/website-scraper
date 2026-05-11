@@ -55,7 +55,7 @@ bun run format
 - `robots.txt` compliance and rate limiting
 - Crawl limits for safety
 - Manifest and JSONL event log
-- Auto-generated `design.md` in `<page-dir>/data/` following the [google-labs-code/design.md](https://github.com/google-labs-code/design.md) spec (YAML front matter with `colors`, `typography`, `rounded`, `spacing` tokens + canonical markdown sections)
+- Auto-generated `design.md` at the scrape root following the [google-labs-code/design.md](https://github.com/google-labs-code/design.md) spec (YAML front matter with `colors`, `typography`, `rounded`, `spacing` tokens + canonical markdown sections)
 - Compact agent index in `agent/context.json` + `agent/context.md` for faster agent onboarding
 - LLM-friendly output by default (large inline style blocks are extracted to `assets/css/inline/*.css`)
 
@@ -90,7 +90,7 @@ The scraper now applies LLM-friendly defaults automatically:
 - In `--no-single-file` mode, stylesheet files stay external (smaller editable HTML + direct CSS targets).
 - Large inline `<style>` blocks are extracted into `assets/css/inline/` (default threshold: 32 KB).
 - `agent/context.json` + `agent/context.md` are always generated.
-- CD summary files are generated with lightweight extraction (no expensive computed-style pass).
+- `design.md` is generated from rendered computed styles when Playwright is available, with CSS/HTML extraction as a fallback.
 
 For redesign-focused runs:
 
@@ -99,6 +99,13 @@ bun run start --url https://example.com --subpages
 ```
 
 Then start from `agent/context.md` / `agent/context.json`.
+The first agent instruction points to the scrape-root `design.md`; read that file before editing HTML or CSS.
+
+Validate a generated design contract with:
+
+```bash
+bun run design:lint scraped_sites/scrape-<domain>-<timestamp>/design.md
+```
 
 ## Output
 

@@ -1,4 +1,8 @@
 import { describe, expect, it } from 'bun:test';
+import { spawnSync } from 'child_process';
+import { mkdtempSync, rmSync, writeFileSync } from 'fs';
+import { tmpdir } from 'os';
+import path from 'path';
 import { MiniCdCollector } from '../src/mini_cd';
 import { renderDesignMarkdown } from '../src/design_md';
 
@@ -71,8 +75,8 @@ describe('renderDesignMarkdown', () => {
 
   it('emits typography tokens for display and body', () => {
     expect(output).toContain('typography:');
-    expect(output).toContain('display:');
-    expect(output).toContain('body:');
+    expect(output).toContain('headline-display:');
+    expect(output).toContain('body-md:');
     expect(output).toMatch(/fontFamily: (Inter|"Playfair Display"|Playfair Display)/);
   });
 
@@ -83,6 +87,15 @@ describe('renderDesignMarkdown', () => {
 
   it('emits a spacing scale', () => {
     expect(output).toContain('spacing:');
+  });
+
+  it('emits spec-safe typography and dimension values', () => {
+    expect(output).not.toMatch(/fontSize: \d+\n/);
+    expect(output).not.toMatch(/fontSize: \.\d+/);
+    expect(output).not.toMatch(/\n  \d+: \.\d+\n/);
+    expect(output).toContain('fontSize: 48px');
+    expect(output).toContain('lineHeight: 56px');
+    expect(output).toContain('0: 12px');
   });
 
   it('contains the canonical markdown sections in order', () => {
@@ -101,6 +114,24 @@ describe('renderDesignMarkdown', () => {
       const index = output.indexOf(heading);
       expect(index).toBeGreaterThan(lastIndex);
       lastIndex = index;
+    }
+  });
+
+  it('passes the official DESIGN.md linter', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'design-md-'));
+    const designPath = path.join(dir, 'design.md');
+    writeFileSync(designPath, output, 'utf8');
+
+    try {
+      const result = spawnSync('bunx', ['@google/design.md', 'lint', designPath], {
+        cwd: path.resolve(import.meta.dir, '..'),
+        encoding: 'utf8',
+      });
+
+      expect(result.status).toBe(0);
+      expect(`${result.stdout}\n${result.stderr}`).not.toContain('"severity": "error"');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

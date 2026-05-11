@@ -53,7 +53,11 @@ export interface ExtractLargeInlineStylesResult {
   extractedAssets: ExtractedInlineCssAsset[];
 }
 
-const buildInlineStyleSourceUrl = (pageUrl: string, index: number, hash: string): string => {
+const buildInlineStyleSourceUrl = (
+  pageUrl: string,
+  index: number,
+  hash: string,
+): string => {
   const pageHash = createHash('sha1')
     .update(normalizeUrl(pageUrl))
     .digest('hex')

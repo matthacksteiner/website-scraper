@@ -18,10 +18,7 @@ import {
 } from './agent_context';
 import { MiniCdCollector, MiniCdReport } from './mini_cd';
 import { renderDesignMarkdown } from './design_md';
-import {
-  extractLargeInlineStyles,
-  INLINE_STYLE_EXTRACT_MIN_BYTES,
-} from './ai_friendly';
+import { extractLargeInlineStyles, INLINE_STYLE_EXTRACT_MIN_BYTES } from './ai_friendly';
 
 class RateLimiter {
   private last = 0;
@@ -226,7 +223,7 @@ export class Scraper {
         } else {
           captured = await capturePage(context, item.url, {
             timeoutMs: this.options.timeoutMs,
-            collectComputedSnapshot: false,
+            collectComputedSnapshot: true,
           });
         }
       } catch (error) {

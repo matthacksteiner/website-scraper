@@ -4,3 +4,4 @@ scraped_sites
 coverage
 *.log
 package-lock.json
+.claude/
