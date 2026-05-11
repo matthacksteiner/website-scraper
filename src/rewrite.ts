@@ -753,6 +753,11 @@ const stripConsentArtifacts = ($: ReturnType<typeof load>): void => {
     // Complianz (WordPress)
     '#cmplz-cookiebanner-container',
     '.cmplz-cookiebanner',
+    '#cmplz-manage-consent',
+    '[id^="cmplz-"]',
+    '[class*="cmplz-cookiebanner"]',
+    '[class*="cmplz-manage-consent"]',
+    '[data-cmplz-banner]',
     // Klaro
     '.klaro',
     '#klaro',
@@ -882,7 +887,8 @@ const stripConsentArtifacts = ($: ReturnType<typeof load>): void => {
     [data-acris-cookie-consent], .acris-cookie-consent,
     #CybotCookiebotDialog, #CybotCookiebotDialogBodyUnderlay, [data-cookieconsent],
     #onetrust-consent-sdk, #onetrust-banner-sdk, .onetrust-pc-dark-filter,
-    #cmplz-cookiebanner-container, .cmplz-cookiebanner,
+    #cmplz-cookiebanner-container, .cmplz-cookiebanner, #cmplz-manage-consent,
+    [id^="cmplz-"], [class*="cmplz-cookiebanner"], [class*="cmplz-manage-consent"],
     .klaro, #klaro,
     #cookie-law-info-bar, #cookie-law-info-again, .cky-consent-container,
     #usercentrics-root,
