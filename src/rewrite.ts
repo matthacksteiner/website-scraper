@@ -410,6 +410,12 @@ export const rewriteHtml = (
 ): string => {
   const $ = load(html);
   stripCodexMenuForceOpenArtifacts($);
+  // All URLs below are resolved against the real page URL and rewritten to
+  // document-relative local paths. A leftover `<base href>` (pointing at the
+  // live origin) would make the browser resolve those relative paths against
+  // the origin instead of the local document, so assets like CSS never load.
+  // Strip the href; keep any `target` so a bare `<base>` still behaves.
+  $('base[href]').removeAttr('href');
   const attributes = [
     'href',
     'src',
