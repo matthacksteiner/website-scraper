@@ -781,6 +781,18 @@ const stripConsentArtifacts = ($: ReturnType<typeof load>): void => {
     '#tarteaucitronAlertBig',
     // Osano
     '.osano-cm-window',
+    // TYPO3 dp-consent-management (and similar "consent-*" banners/popups)
+    '[class*="dp-consent-management"]',
+    '#dp-consent-management-popup',
+    '[class*="consent-banner"]',
+    '[class*="consent-popup"]',
+    // Content-blocker overlay shown over embedded media until consent is given;
+    // removing it reveals the underlying video/iframe.
+    '[class*="cookie-not-set-disclaimer"]',
+    // Dangling consent controls (open/accept/close) that target removed banners.
+    '.configure-consents',
+    '.accept-consents',
+    '.close-consent-popup',
     // Generic patterns
     '[id*="cookie-banner"]',
     '[id*="cookie-consent"]',
