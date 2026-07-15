@@ -11,7 +11,9 @@ bun run start
 
 You’ll be prompted for a URL, whether to scrape subpages, and snapshot mode. Output is written to `./scraped_sites/scrape-<domain>-<timestamp>/`.
 
-By default pages are saved with references to local assets (`--no-single-file`) for a smaller footprint. In this mode, runtime scripts are removed to keep snapshots stable/editable, and large inline `<style>` blocks are automatically extracted into `assets/css/inline/` to keep HTML AI-friendly without changing visual output. Use `--single-file` to inline CSS/images/fonts into each HTML file.
+By default pages are saved with references to local assets (`--no-single-file`) for a smaller footprint. Cookie/consent banners and their blocker scripts are stripped by default (`--strip-consent`); other page scripts are kept as captured. Large inline `<style>` blocks are automatically extracted into `assets/css/inline/` to keep HTML AI-friendly without changing visual output. Use `--single-file` to inline CSS/images/fonts into each HTML file.
+
+After each scrape, a verification step loads every captured page and reports problems (see [Verification](#verification)).
 
 ## Preview (recommended for `--no-single-file`)
 
@@ -32,6 +34,30 @@ bun run serve:latest
 ```
 
 This will find the most recent scrape directory and serve its root page at `http://127.0.0.1:4173/`.
+
+## Verification
+
+After every scrape, `bun run start` runs a verification pass: it serves the output with a plain static server (the same way `npx http-server` would) and loads every captured page in a headless browser, then writes a report to the scrape root.
+
+Findings are split by origin so the actionable signal is not drowned out by runtime noise:
+
+- **Actionable — missing local resources:** requests to the local server that return `4xx/5xx` (typically `404` on `assets/…`). These indicate assets the scrape failed to capture.
+- **Informative:** requests to external hosts (absolute URLs still in the HTML), console errors and uncaught JS exceptions. Re-running a page's JavaScript without its backend is inherently noisy, so these are reported but not treated as scrape defects.
+
+The step is best-effort and never fails the scrape (exit code stays `0`). Two files are written to the scrape root: `verify-report.json` (full detail) and `verify-report.md` (human-readable). A one-line summary is printed to the console.
+
+Skip it with `--no-verify`. Verify an existing scrape directory on its own:
+
+```bash
+bun run build
+bun run verify --dir scraped_sites/scrape-<domain>-<timestamp>
+```
+
+Or verify the most recent scrape output:
+
+```bash
+bun run verify:latest
+```
 
 ## Quality Tooling
 
@@ -58,6 +84,7 @@ bun run format
 - Auto-generated `design.md` at the scrape root following the [google-labs-code/design.md](https://github.com/google-labs-code/design.md) spec (YAML front matter with `colors`, `typography`, `rounded`, `spacing` tokens + canonical markdown sections)
 - Compact agent index in `agent/context.json` + `agent/context.md` for faster agent onboarding
 - LLM-friendly output by default (large inline style blocks are extracted to `assets/css/inline/*.css`)
+- Post-scrape verification that loads every page like a static server and reports missing local resources, external requests and console errors (`verify-report.md`)
 
 ## Usage
 
@@ -82,6 +109,7 @@ bun run start --url https://example.com --subpages --scope same-origin
 - `--concurrency <number>` (default: 2)
 - `--user-agent <string>`
 - `--timeout-ms <number>` (default: 30000)
+- `--verify` / `--no-verify` (default: verify)
 
 ## Agent-Optimized Workflow
 
@@ -122,6 +150,8 @@ scraped_sites/
     design.md
     scrape-manifest.json
     scrape-log.jsonl
+    verify-report.json
+    verify-report.md
     agent/
       context.json
       context.md

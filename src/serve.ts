@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 import http from 'http';
 import path from 'path';
-import { promises as fs, readdirSync, statSync } from 'fs';
+import { promises as fs } from 'fs';
 import * as mime from 'mime-types';
 import { Command } from 'commander';
+import { resolveLatestScrapeDir } from './scrape_dirs';
 
 const toNumber = (value: string, fallback: number): number => {
   const parsed = Number.parseInt(value, 10);
@@ -23,36 +24,6 @@ const safeJoin = (root: string, urlPath: string): string | null => {
   if (rel === '') return resolved;
   if (rel.startsWith('..') || rel.includes(`..${path.sep}`)) return null;
   return resolved;
-};
-
-const resolveLatestScrapeDir = (scrapesDir: string): string => {
-  const baseDir = path.resolve(scrapesDir);
-  let entries;
-  try {
-    entries = readdirSync(baseDir, { withFileTypes: true });
-  } catch {
-    throw new Error(`Scrapes directory not found: ${baseDir}`);
-  }
-
-  const candidates: Array<{ dir: string; mtimeMs: number }> = [];
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const candidateDir = path.join(baseDir, entry.name);
-    const manifestPath = path.join(candidateDir, 'scrape-manifest.json');
-    try {
-      const manifestStat = statSync(manifestPath);
-      candidates.push({ dir: candidateDir, mtimeMs: manifestStat.mtimeMs });
-    } catch {
-      // Ignore folders that are not finished scrape outputs.
-    }
-  }
-
-  if (candidates.length === 0) {
-    throw new Error(`No scrape outputs found in: ${baseDir}`);
-  }
-
-  candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
-  return candidates[0].dir;
 };
 
 const resolveDefaultPageUrl = async (root: string): Promise<string | null> => {

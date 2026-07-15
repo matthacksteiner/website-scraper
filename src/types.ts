@@ -94,3 +94,47 @@ export interface ComputedStyleSnapshot {
   };
   headings: ComputedHeadingSnapshot[];
 }
+
+export interface VerifyConsoleMessage {
+  text: string;
+  location?: string; // "url:line" wenn vorhanden
+}
+
+export interface VerifyRequestIssue {
+  url: string;
+  origin: 'local' | 'external'; // lokaler Server vs. fremder Host
+  method?: string;
+  resourceType?: string;
+  status?: number; // bei 4xx/5xx-Response
+  errorText?: string; // bei requestfailed
+}
+
+export interface VerifyPageResult {
+  url: string; // ursprüngliche Remote-URL
+  localUrl: string; // http://127.0.0.1:<port>/...
+  path: string; // Snapshot-Pfad, relativ zum Scrape-Root (posix)
+  navigated: boolean;
+  navigationError?: string;
+  consoleErrors: VerifyConsoleMessage[];
+  consoleWarnings: VerifyConsoleMessage[];
+  pageErrors: VerifyConsoleMessage[];
+  localFailedRequests: VerifyRequestIssue[]; // actionable
+  externalFailedRequests: VerifyRequestIssue[]; // informativ
+}
+
+export interface VerifyReport {
+  generatedAt: string;
+  rootDir: string;
+  pagesChecked: number;
+  totals: {
+    // actionable
+    localFailedRequests: number;
+    pagesWithLocalFailures: number;
+    // informativ
+    externalFailedRequests: number;
+    consoleErrors: number;
+    consoleWarnings: number;
+    pageErrors: number;
+  };
+  pages: VerifyPageResult[];
+}

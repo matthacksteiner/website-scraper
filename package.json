@@ -23,6 +23,8 @@
     "start": "bun dist/cli.js",
     "serve": "bun dist/serve.js",
     "serve:latest": "bun dist/serve.js --latest",
+    "verify": "bun dist/verify_cli.js",
+    "verify:latest": "bun dist/verify_cli.js --latest",
     "postprocess": "bun dist/postprocess.js",
     "design:lint": "bunx @google/design.md lint",
     "test": "bun test"

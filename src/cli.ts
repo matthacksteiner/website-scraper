@@ -5,6 +5,7 @@ import path from 'path';
 import { Scraper } from './scraper';
 import { parseIntOption } from './options';
 import { ScrapeOptions, ScopeMode } from './types';
+import { renderVerifySummary, verifyScrape, writeVerifyReport } from './verify';
 
 const DEFAULT_USER_AGENT =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -48,7 +49,9 @@ program
   .option('--delay-ms <number>', 'Delay between page fetches', '500')
   .option('--concurrency <number>', 'Concurrent page fetches', '2')
   .option('--user-agent <string>', 'Custom user-agent string')
-  .option('--timeout-ms <number>', 'Navigation timeout in ms', '30000');
+  .option('--timeout-ms <number>', 'Navigation timeout in ms', '30000')
+  .option('--verify', 'Verify the snapshot after scraping', true)
+  .option('--no-verify', 'Skip snapshot verification');
 
 const main = async () => {
   const rawArgs = process.argv.slice(2);
@@ -215,6 +218,23 @@ const main = async () => {
   await scraper.run();
 
   console.log(`Scrape complete. Output: ${options.output}`);
+
+  if (opts.verify) {
+    // Best-effort quality check: load every captured page like `npx http-server`
+    // would and report failing local resources, external requests and console
+    // errors. Never fails the scrape (exit code stays 0).
+    try {
+      const report = await verifyScrape(options.output, {
+        concurrency: options.concurrency,
+        timeoutMs: options.timeoutMs,
+      });
+      const { mdPath } = await writeVerifyReport(options.output, report);
+      console.log(renderVerifySummary(report));
+      console.log(`Verify details: ${mdPath}`);
+    } catch (error) {
+      console.warn(`Verify skipped: ${(error as Error).message}`);
+    }
+  }
 };
 
 main().catch((error) => {
