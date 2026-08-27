@@ -2,7 +2,7 @@ import { chromium, BrowserContext } from 'playwright';
 import { load } from 'cheerio';
 import { promises as fs } from 'fs';
 import path from 'path';
-import { ScrapeOptions } from './types';
+import { ScrapeOptions, WordingPageSnapshot } from './types';
 import { createScopeFilter, isHttpUrl, normalizeUrl } from './url';
 import { Storage } from './storage';
 import { RobotsClient } from './robots';
@@ -18,6 +18,11 @@ import {
 } from './agent_context';
 import { MiniCdCollector, MiniCdReport } from './mini_cd';
 import { renderDesignMarkdown } from './design_md';
+import {
+  buildWordingDocument,
+  extractWordingFromHtml,
+  renderWordingMarkdown,
+} from './wording';
 import { extractLargeInlineStyles, INLINE_STYLE_EXTRACT_MIN_BYTES } from './ai_friendly';
 
 class RateLimiter {
@@ -93,6 +98,7 @@ export class Scraper {
   private lastStartedUrl: string | null = null;
   private miniCdCollector = new MiniCdCollector();
   private agentPages: AgentPageContext[] = [];
+  private pageWordings: WordingPageSnapshot[] = [];
 
   constructor(private options: ScrapeOptions) {
     this.storage = new Storage(options.output, options);
@@ -149,26 +155,30 @@ export class Scraper {
 
     const report = this.miniCdCollector.buildReport(this.options.url);
 
-    const postTasks: Promise<void>[] = [
-      this.writeDesignFile(report).catch((error) => {
-        this.storage.recordError({
-          url: this.options.url,
-          error: (error as Error).message,
-          phase: 'design',
-          timestamp: new Date().toISOString(),
-        });
-      }),
-      this.writeAgentContext().catch((error) => {
-        this.storage.recordError({
-          url: this.options.url,
-          error: (error as Error).message,
-          phase: 'agent-context',
-          timestamp: new Date().toISOString(),
-        });
-      }),
-    ];
+    const designTask = this.writeDesignFile(report).catch((error) => {
+      this.storage.recordError({
+        url: this.options.url,
+        error: (error as Error).message,
+        phase: 'design',
+        timestamp: new Date().toISOString(),
+      });
+    });
 
-    await Promise.allSettled(postTasks);
+    // Sequenziell: der Context darf nur auf wording.md verweisen, wenn die Datei
+    // auch geschrieben wurde. writeWordingFile fängt eigene Fehler und liefert null.
+    const contextTask = (async () => {
+      const wordingFile = await this.writeWordingFile();
+      await this.writeAgentContext(wordingFile);
+    })().catch((error) => {
+      this.storage.recordError({
+        url: this.options.url,
+        error: (error as Error).message,
+        phase: 'agent-context',
+        timestamp: new Date().toISOString(),
+      });
+    });
+
+    await Promise.allSettled([designTask, contextTask]);
 
     await this.storage.finalize();
 
@@ -224,6 +234,7 @@ export class Scraper {
           captured = await capturePage(context, item.url, {
             timeoutMs: this.options.timeoutMs,
             collectComputedSnapshot: true,
+            collectWording: this.options.wording,
           });
         }
       } catch (error) {
@@ -244,6 +255,19 @@ export class Scraper {
 
       if (captured.computedSnapshot) {
         this.miniCdCollector.addComputedSnapshot(captured.computedSnapshot);
+      }
+
+      if (this.options.wording) {
+        // Vor rewriteHtml() — mit den originalen Link-Zielen statt der lokalen
+        // Snapshot-Pfade. wording.md beschreibt die Live-Seite, nicht den Ordner.
+        this.pageWordings.push(
+          captured.wording ??
+            extractWordingFromHtml({
+              url: item.url,
+              html: captured.html,
+              stripConsent: this.options.stripConsent,
+            }),
+        );
       }
 
       // Playwright only captures resources that were actually requested during the page load.
@@ -475,7 +499,32 @@ export class Scraper {
     });
   }
 
-  private async writeAgentContext(): Promise<void> {
+  /** Schreibt wording.md und gibt den Dateinamen zurück, oder null. */
+  private async writeWordingFile(): Promise<string | null> {
+    if (!this.options.wording) return null;
+    try {
+      const doc = buildWordingDocument(this.options.url, this.pageWordings);
+      const wordingPath = path.join(this.options.output, 'wording.md');
+      await fs.writeFile(wordingPath, renderWordingMarkdown(doc), 'utf8');
+      await this.storage.logEvent({
+        type: 'wording-written',
+        wordingPath,
+        entries: doc.entries.length,
+        salutation: doc.salutation.form,
+      });
+      return 'wording.md';
+    } catch (error) {
+      this.storage.recordError({
+        url: this.options.url,
+        error: (error as Error).message,
+        phase: 'wording',
+        timestamp: new Date().toISOString(),
+      });
+      return null;
+    }
+  }
+
+  private async writeAgentContext(wordingFile: string | null): Promise<void> {
     const rootPagePath = this.storage.pagePathForUrl(this.options.url);
     const contextDir = path.join(this.options.output, 'agent');
     const contextJsonPath = path.join(contextDir, 'context.json');
@@ -485,6 +534,7 @@ export class Scraper {
       this.options.url,
       rootRelative,
       this.agentPages,
+      wordingFile,
     );
 
     await fs.mkdir(contextDir, { recursive: true });

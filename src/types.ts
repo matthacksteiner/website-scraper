@@ -16,6 +16,7 @@ export interface ScrapeOptions {
   concurrency: number;
   userAgent: string;
   timeoutMs: number;
+  wording: boolean;
 }
 
 export interface PageEntry {
@@ -93,6 +94,76 @@ export interface ComputedStyleSnapshot {
     };
   };
   headings: ComputedHeadingSnapshot[];
+}
+
+export type WordingCorpus = 'cta' | 'heading' | 'nav' | 'form' | 'meta';
+
+export type WordingCollectionMode = 'playwright' | 'fetch-fallback';
+
+/** Ein Rohtreffer aus dem gerenderten DOM — ungeputzt, ungefiltert. */
+export interface WordingRawItem {
+  corpus: WordingCorpus;
+  /**
+   * Subtyp: 'h1'|'h2'|'h3' | 'button'|'link'|'submit' | 'menuitem'
+   * | 'label'|'placeholder'|'legend'|'option' | 'title'|'description'
+   */
+  kind: string;
+  text: string;
+  /** Kanonisiertes Ziel, nur bei CTA/Nav. */
+  href?: string;
+  /** Einfügereihenfolge der Rohitems innerhalb der Seite, ab 0. */
+  order: number;
+}
+
+export interface WordingPageSnapshot {
+  url: string;
+  /** <html lang>, lowercase + getrimmt, oder null. */
+  lang: string | null;
+  collectionMode: WordingCollectionMode;
+  items: WordingRawItem[];
+}
+
+export interface WordingEntry {
+  corpus: WordingCorpus;
+  kind: string;
+  text: string;
+  href?: string;
+  /** Seiten-URLs, auf denen der Eintrag vorkommt (dedupliziert, sortiert). */
+  pages: string[];
+  pageCount: number;
+  /** Gesamtvorkommen über alle Seiten (kann > pageCount sein). */
+  occurrences: number;
+  /** pageCount > 1 — derselbe Text auf mehreren Seiten. */
+  global: boolean;
+}
+
+export type WordingSalutationForm = 'du' | 'Sie' | 'gemischt' | 'unbestimmt';
+
+export interface WordingSalutation {
+  form: WordingSalutationForm;
+  /** Starke formelle Marker (Ihnen, Ihre, Ihrem, …), Gewicht 2. */
+  formalStrongHits: number;
+  /** Schwache formelle Marker (Sie, Ihr), Gewicht 1. */
+  formalWeakHits: number;
+  formalHits: number;
+  informalHits: number;
+  /** Englische Anrede (you/your/yours) — informativ, entscheidet nichts. */
+  englishAddressHits: number;
+  /** Englische Selbstbezeichnung (we/our/us/ours) — informativ. */
+  englishWeHits: number;
+  markers: { formal: string[]; informal: string[]; english: string[] };
+}
+
+export interface WordingDocument {
+  generatedAt: string;
+  sourceUrl: string;
+  pagesAnalyzed: number;
+  /** Häufigste <html lang> über alle Seiten, oder null. */
+  language: string | null;
+  languages: Array<{ value: string; count: number }>;
+  collectionMode: WordingCollectionMode | 'gemischt';
+  salutation: WordingSalutation;
+  entries: WordingEntry[];
 }
 
 export interface VerifyConsoleMessage {

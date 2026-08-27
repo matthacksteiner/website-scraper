@@ -6,8 +6,8 @@ Guidance for AI coding agents working in this repository.
 
 A state-of-the-art website scraper. It renders pages with Playwright, saves an
 offline snapshot (assets linked by default, or fully inlined single-file), and
-generates AI-friendly artifacts (`design.md`, `agent/context.*`). After each
-scrape it verifies the snapshot and writes a `verify-report.*`.
+generates AI-friendly artifacts (`design.md`, `wording.md`, `agent/context.*`).
+After each scrape it verifies the snapshot and writes a `verify-report.*`.
 
 ## Setup & commands
 
@@ -21,17 +21,17 @@ bun run build             # tsc → dist/
 bun run start             # interactive scrape (prompts for URL etc.)
 ```
 
-| Command                            | Purpose                                                               |
-| ---------------------------------- | --------------------------------------------------------------------- |
-| `bun run build`                    | Compile `src/` → `dist/` (run before any CLI).                        |
-| `bun run start`                    | Scrape a site (see `src/cli.ts`). Auto-verifies unless `--no-verify`. |
-| `bun run serve` / `serve:latest`   | Serve a scrape over HTTP (manifest URL-mapping).                      |
-| `bun run verify` / `verify:latest` | Verify a scrape snapshot standalone.                                  |
-| `bun run postprocess`              | Re-inline / convert an existing scrape.                               |
-| `bun test`                         | Run the `bun:test` suite in `tests/`.                                 |
-| `bun run typecheck`                | `tsc --noEmit`.                                                       |
-| `bun run lint` / `lint:fix`        | ESLint over `src/`.                                                   |
-| `bun run format` / `format:check`  | Prettier.                                                             |
+| Command                            | Purpose                                                                                                          |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `bun run build`                    | Compile `src/` → `dist/` (run before any CLI).                                                                   |
+| `bun run start`                    | Scrape a site (see `src/cli.ts`). Auto-verifies unless `--no-verify`; writes `wording.md` unless `--no-wording`. |
+| `bun run serve` / `serve:latest`   | Serve a scrape over HTTP (manifest URL-mapping).                                                                 |
+| `bun run verify` / `verify:latest` | Verify a scrape snapshot standalone.                                                                             |
+| `bun run postprocess`              | Re-inline / convert an existing scrape.                                                                          |
+| `bun test`                         | Run the `bun:test` suite in `tests/`.                                                                            |
+| `bun run typecheck`                | `tsc --noEmit`.                                                                                                  |
+| `bun run lint` / `lint:fix`        | ESLint over `src/`.                                                                                              |
+| `bun run format` / `format:check`  | Prettier.                                                                                                        |
 
 Before claiming a change works, run `typecheck`, `lint`, `test`, `build` — and for
 runtime behavior, exercise the actual CLI against a real scrape (see below).
@@ -50,6 +50,7 @@ runtime behavior, exercise the actual CLI against a real scrape (see below).
 - `verify_cli.ts` — `bun run verify` entry.
 - `scrape_dirs.ts` — shared `resolveLatestScrapeDir` (used by serve + verify).
 - `design_md.ts`, `mini_cd.ts` — design-token extraction → `design.md`.
+- `wording.ts` — copy extraction (CTAs, H1–H3, nav, forms, meta) + salutation → `wording.md`.
 - `agent_context.ts` — `agent/context.{json,md}`.
 - `types.ts` — shared interfaces.
 - `options.ts`, `url.ts`, `robots.ts`, `ai_friendly.ts` — helpers.
@@ -69,6 +70,34 @@ Best-effort: never fails the scrape, exit code stays `0`. Writes
 (`splitRequestIssues`, `buildVerifyReport`, `renderVerifyMarkdown`,
 `renderVerifySummary`, `classifyRequestOrigin`) are unit-tested; the
 Playwright/server layer is kept thin.
+
+## Wording (`wording.ts`)
+
+Writes `wording.md` to the scrape root — deliberately **not** into `design.md`,
+which follows the google-labs-code spec and is linted.
+
+Two collection paths, one shared pure pipeline:
+
+- **Playwright** — `collectWordingSnapshot()` in `playwright_capture.ts`, a single
+  `page.evaluate` that resolves visibility (`getComputedStyle` up the whole
+  ancestor chain) and accessible names. It runs **directly after
+  `page.content()`, before `collectComputedSnapshot()`** — that function resizes
+  the viewport six times, and responsive JS can rewrite the DOM in between.
+  Moving the call breaks the guarantee that `wording.md` and the saved HTML
+  describe the same document.
+- **Fetch fallback** — `extractWordingFromHtml()` (cheerio) when Playwright can't
+  launch. Sees no CSS, so it only catches attribute- and inline-style-based
+  hiding; `collectionMode` in the document records which path ran.
+
+Everything else — cleaning, dedup, salutation, markdown — is pure and unit-tested
+(`tests/wording.test.ts`). The salutation is a marker heuristic, weighted
+(`Ihnen`/`Ihre` strong, `Sie`/`Ihr` weak, threshold 2) so a single ambiguous
+sentence-initial `Sie` doesn't decide it. Mixed usage prints both counters.
+
+Wording is collected **before** `rewriteHtml()`, so CTA targets are the live URLs,
+not local snapshot paths. `writeWordingFile()` swallows its own errors
+(`phase: 'wording'`) and returns `null`; the agent context links `wording.md` only
+when that returned a filename — hence the two post-tasks run sequentially.
 
 ## Conventions
 
