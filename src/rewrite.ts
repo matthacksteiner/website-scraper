@@ -730,7 +730,7 @@ export const rewriteHtml = (
   return $.html();
 };
 
-const stripConsentArtifacts = ($: ReturnType<typeof load>): void => {
+export const stripConsentArtifacts = ($: ReturnType<typeof load>): void => {
   const removeSelectors = [
     // Borlabs (WordPress)
     '#BorlabsCookieBox',

@@ -51,7 +51,9 @@ program
   .option('--user-agent <string>', 'Custom user-agent string')
   .option('--timeout-ms <number>', 'Navigation timeout in ms', '30000')
   .option('--verify', 'Verify the snapshot after scraping', true)
-  .option('--no-verify', 'Skip snapshot verification');
+  .option('--no-verify', 'Skip snapshot verification')
+  .option('--wording', 'Extract page copy into wording.md', true)
+  .option('--no-wording', 'Skip wording extraction');
 
 const main = async () => {
   const rawArgs = process.argv.slice(2);
@@ -212,6 +214,7 @@ const main = async () => {
     concurrency: parseIntOption(opts.concurrency, 2, 1),
     userAgent: opts.userAgent || DEFAULT_USER_AGENT,
     timeoutMs: parseIntOption(opts.timeoutMs, 30000, 1),
+    wording: Boolean(opts.wording),
   };
 
   const scraper = new Scraper(options);

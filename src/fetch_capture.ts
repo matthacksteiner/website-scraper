@@ -1,5 +1,5 @@
 import { load } from 'cheerio';
-import { CapturedResponse, ComputedStyleSnapshot } from './types';
+import { CapturedResponse, ComputedStyleSnapshot, WordingPageSnapshot } from './types';
 import { normalizeUrl } from './url';
 import postcss from 'postcss';
 import valueParser from 'postcss-value-parser';
@@ -10,6 +10,8 @@ export interface CapturedPage {
   contentType: string | null;
   responses: CapturedResponse[];
   computedSnapshot: ComputedStyleSnapshot | null;
+  /** Immer null — der Fetch-Pfad rendert nicht; wording.ts extrahiert später.  */
+  wording: WordingPageSnapshot | null;
 }
 
 const isSkippable = (value: string): boolean => {
@@ -286,5 +288,5 @@ export const capturePageFetch = async (
 
   const responses = await captureAssetsForHtml(html, url, userAgent, timeoutMs);
 
-  return { html, status, contentType, responses, computedSnapshot: null };
+  return { html, status, contentType, responses, computedSnapshot: null, wording: null };
 };

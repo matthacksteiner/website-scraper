@@ -82,6 +82,7 @@ bun run format
 - Crawl limits for safety
 - Manifest and JSONL event log
 - Auto-generated `design.md` at the scrape root following the [google-labs-code/design.md](https://github.com/google-labs-code/design.md) spec (YAML front matter with `colors`, `typography`, `rounded`, `spacing` tokens + canonical markdown sections)
+- Auto-generated `wording.md` at the scrape root: the site's existing copy (CTAs, H1–H3, navigation, form labels, meta) collected from the rendered DOM, deduplicated across pages, plus a single detected-salutation verdict (du / Sie / mixed / undetermined)
 - Compact agent index in `agent/context.json` + `agent/context.md` for faster agent onboarding
 - LLM-friendly output by default (large inline style blocks are extracted to `assets/css/inline/*.css`)
 - Post-scrape verification that loads every page like a static server and reports missing local resources, external requests and console errors (`verify-report.md`)
@@ -110,6 +111,7 @@ bun run start --url https://example.com --subpages --scope same-origin
 - `--user-agent <string>`
 - `--timeout-ms <number>` (default: 30000)
 - `--verify` / `--no-verify` (default: verify)
+- `--wording` / `--no-wording` (default: wording)
 
 ## Agent-Optimized Workflow
 
@@ -117,7 +119,7 @@ The scraper now applies LLM-friendly defaults automatically:
 
 - In `--no-single-file` mode, stylesheet files stay external (smaller editable HTML + direct CSS targets).
 - Large inline `<style>` blocks are extracted into `assets/css/inline/` (default threshold: 32 KB).
-- `agent/context.json` + `agent/context.md` are always generated.
+- `agent/context.json` + `agent/context.md` are always generated, and point at `wording.md` when it was written.
 - `design.md` is generated from rendered computed styles when Playwright is available, with CSS/HTML extraction as a fallback.
 
 For redesign-focused runs:
@@ -148,6 +150,7 @@ scraped_sites/
             inline/
         index.html
     design.md
+    wording.md
     scrape-manifest.json
     scrape-log.jsonl
     verify-report.json
@@ -160,6 +163,24 @@ scraped_sites/
 Pages are saved under the `pages/` directory, with each page having its own `assets/` folder containing only the assets used by that page. The root page is at `pages/index.html` with assets in `pages/assets/`, and subpages are at `pages/<subpage>/index.html` with assets in `pages/<subpage>/assets/`. By default, HTML references local files in `assets/` (`assets/img`, `assets/css`, etc), and large inline `<style>` blocks are moved into `assets/css/inline/`. In `--single-file` mode, CSS/images/fonts are inlined into each HTML page.
 
 After each scrape, a `design.md` is written to the scrape root containing extracted color, typography, spacing, and rounded tokens in the [google-labs-code/design.md](https://github.com/google-labs-code/design.md) format.
+
+## Wording
+
+Alongside `design.md`, every scrape writes a `wording.md` to the scrape root. Where `design.md` captures how the site looks, `wording.md` captures how it speaks — so a redesign can keep the existing voice instead of accidentally switching it.
+
+It collects, per page and directly from the rendered DOM (no second crawl, no LLM call):
+
+- H1–H3 in document order
+- button / button-link / `input[type=submit]` labels, with their targets
+- navigation labels
+- form labels, placeholders, legends, options and submit labels
+- `<title>` and `meta[name="description"]`
+
+Text is cleaned before it lands in the file: whitespace collapsed, zero-width characters removed, anything hidden (`aria-hidden`, `hidden`, `display:none`, `sr-only`) dropped, and icon-only labels discarded — but an icon button keeps its accessible name from `aria-label`, `aria-labelledby`, `title` or `alt`. Text that appears identically on several pages is listed once, marked `global` with a page count.
+
+The file carries exactly **one** evaluation: the salutation — `du`, `Sie`, `gemischt` or `unbestimmt` — detected by counting markers (`Ihnen`/`Ihre`/`Sie` against `du`/`dich`/`dein`/`euch`, plus separate English `you`/`we` counters that never decide the verdict). Mixed usage prints both counters rather than guessing one form. There is no other tone judgement: the file is evidence, not a finding.
+
+Skip it with `--no-wording`.
 
 ## Notes
 

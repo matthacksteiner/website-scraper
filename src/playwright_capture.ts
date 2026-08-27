@@ -1,5 +1,11 @@
 import { BrowserContext } from 'playwright';
-import { CapturedResponse, ComputedStyleSnapshot } from './types';
+import {
+  CapturedResponse,
+  ComputedStyleSnapshot,
+  WordingPageSnapshot,
+  WordingRawItem,
+} from './types';
+import { canonicalizeHref } from './wording';
 import { isHttpUrl, normalizeUrl } from './url';
 
 export interface CapturedPage {
@@ -8,11 +14,13 @@ export interface CapturedPage {
   contentType: string | null;
   responses: CapturedResponse[];
   computedSnapshot: ComputedStyleSnapshot | null;
+  wording: WordingPageSnapshot | null;
 }
 
 interface CaptureOptions {
   timeoutMs: number;
   collectComputedSnapshot?: boolean;
+  collectWording?: boolean;
   /**
    * Extra time to allow late-loading/lazy assets (e.g. sliders) to finish requesting resources.
    * Best-effort: the capture continues even if timeouts are hit.
@@ -430,97 +438,312 @@ const collectComputedSnapshot = async (
       .sort((a, b) => a - b);
 
     const headings: ComputedStyleSnapshot['headings'] = [];
-    for (const width of widths) {
-      await page.setViewportSize({
-        width,
-        height: originalViewport.height,
-      });
-      await sleep(150);
+    try {
+      for (const width of widths) {
+        await page.setViewportSize({
+          width,
+          height: originalViewport.height,
+        });
+        await sleep(150);
 
-      const headingAtWidth = (await page.evaluate((breakpoint: string) => {
-        const makeCounter = () => Object.create(null) as Record<string, number>;
-        const inc = (target: Record<string, number>, raw: string) => {
-          if (!raw) return;
-          target[raw] = (target[raw] || 0) + 1;
-        };
+        const headingAtWidth = (await page.evaluate((breakpoint: string) => {
+          const makeCounter = () => Object.create(null) as Record<string, number>;
+          const inc = (target: Record<string, number>, raw: string) => {
+            if (!raw) return;
+            target[raw] = (target[raw] || 0) + 1;
+          };
 
-        const normalizeFontFamily = (value: string) => {
-          const first = String(value || '')
-            .split(',')[0]
-            .trim()
-            .replace(/^['"]+|['"]+$/g, '');
-          if (!first || first.toLowerCase() === 'inherit') return '';
-          return first;
-        };
+          const normalizeFontFamily = (value: string) => {
+            const first = String(value || '')
+              .split(',')[0]
+              .trim()
+              .replace(/^['"]+|['"]+$/g, '');
+            if (!first || first.toLowerCase() === 'inherit') return '';
+            return first;
+          };
 
-        const normalizeLength = (value: string) => {
-          const compact = String(value || '')
-            .trim()
-            .toLowerCase()
-            .replace(/\s+/g, '');
-          if (!compact || compact === 'initial' || compact === 'inherit') return '';
-          return compact;
-        };
+          const normalizeLength = (value: string) => {
+            const compact = String(value || '')
+              .trim()
+              .toLowerCase()
+              .replace(/\s+/g, '');
+            if (!compact || compact === 'initial' || compact === 'inherit') return '';
+            return compact;
+          };
 
-        const isMeaningfulLength = (value: string) => {
-          if (!value) return false;
-          if (value === 'normal') return false;
-          if (/^0(?:\.0+)?(?:[a-z%]+)?$/i.test(value)) return false;
-          return true;
-        };
+          const isMeaningfulLength = (value: string) => {
+            if (!value) return false;
+            if (value === 'normal') return false;
+            if (/^0(?:\.0+)?(?:[a-z%]+)?$/i.test(value)) return false;
+            return true;
+          };
 
-        const bucketByHeading = new Map<
-          string,
-          {
-            fontFamilies: Record<string, number>;
-            fontSizes: Record<string, number>;
-            fontWeights: Record<string, number>;
-            lineHeights: Record<string, number>;
+          const bucketByHeading = new Map<
+            string,
+            {
+              fontFamilies: Record<string, number>;
+              fontSizes: Record<string, number>;
+              fontWeights: Record<string, number>;
+              lineHeights: Record<string, number>;
+            }
+          >();
+
+          const elements = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6'));
+          for (const element of elements) {
+            const heading = element.tagName.toLowerCase();
+            const style = window.getComputedStyle(element);
+            let bucket = bucketByHeading.get(heading);
+            if (!bucket) {
+              bucket = {
+                fontFamilies: makeCounter(),
+                fontSizes: makeCounter(),
+                fontWeights: makeCounter(),
+                lineHeights: makeCounter(),
+              };
+              bucketByHeading.set(heading, bucket);
+            }
+
+            inc(bucket.fontFamilies, normalizeFontFamily(style.fontFamily));
+            const size = normalizeLength(style.fontSize);
+            if (isMeaningfulLength(size)) inc(bucket.fontSizes, size);
+            const weight = normalizeLength(style.fontWeight);
+            if (weight) inc(bucket.fontWeights, weight);
+            const lineHeight = normalizeLength(style.lineHeight);
+            if (isMeaningfulLength(lineHeight)) inc(bucket.lineHeights, lineHeight);
           }
-        >();
 
-        const elements = Array.from(document.querySelectorAll('h1,h2,h3,h4,h5,h6'));
-        for (const element of elements) {
-          const heading = element.tagName.toLowerCase();
-          const style = window.getComputedStyle(element);
-          let bucket = bucketByHeading.get(heading);
-          if (!bucket) {
-            bucket = {
-              fontFamilies: makeCounter(),
-              fontSizes: makeCounter(),
-              fontWeights: makeCounter(),
-              lineHeights: makeCounter(),
-            };
-            bucketByHeading.set(heading, bucket);
-          }
+          return Array.from(bucketByHeading.entries()).map(([heading, tokenMaps]) => ({
+            heading,
+            breakpoint,
+            fontFamilies: tokenMaps.fontFamilies,
+            fontSizes: tokenMaps.fontSizes,
+            fontWeights: tokenMaps.fontWeights,
+            lineHeights: tokenMaps.lineHeights,
+          }));
+        }, `viewport <= ${width}px`)) as ComputedStyleSnapshot['headings'];
 
-          inc(bucket.fontFamilies, normalizeFontFamily(style.fontFamily));
-          const size = normalizeLength(style.fontSize);
-          if (isMeaningfulLength(size)) inc(bucket.fontSizes, size);
-          const weight = normalizeLength(style.fontWeight);
-          if (weight) inc(bucket.fontWeights, weight);
-          const lineHeight = normalizeLength(style.lineHeight);
-          if (isMeaningfulLength(lineHeight)) inc(bucket.lineHeights, lineHeight);
-        }
-
-        return Array.from(bucketByHeading.entries()).map(([heading, tokenMaps]) => ({
-          heading,
-          breakpoint,
-          fontFamilies: tokenMaps.fontFamilies,
-          fontSizes: tokenMaps.fontSizes,
-          fontWeights: tokenMaps.fontWeights,
-          lineHeights: tokenMaps.lineHeights,
-        }));
-      }, `viewport <= ${width}px`)) as ComputedStyleSnapshot['headings'];
-
-      headings.push(...headingAtWidth);
+        headings.push(...headingAtWidth);
+      }
+    } finally {
+      // Auch bei einem Abbruch mitten in der Schleife zurück auf die Ursprungsbreite,
+      // sonst bleibt die Seite für alles Folgende auf der letzten Breakpoint-Breite.
+      await page.setViewportSize(originalViewport).catch(() => undefined);
     }
-
-    await page.setViewportSize(originalViewport);
 
     return {
       ...base,
       headings,
+    };
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Sammelt die Wording-Korpora aus dem gerenderten DOM. Bewusst dünn: nur
+ * DOM-Abfrage, Sichtbarkeit und Accessible Name — Aufräumen, Dedup und
+ * Auswertung passieren in `wording.ts` (pure, unit-getestet).
+ *
+ * Muss VOR `collectComputedSnapshot` laufen: dessen Breakpoint-Schleife setzt
+ * die Viewport-Breite mehrfach um und kann responsives JS den DOM umbauen lassen.
+ */
+const collectWordingSnapshot = async (
+  page: any,
+  url: string,
+): Promise<WordingPageSnapshot | null> => {
+  try {
+    const raw = (await page.evaluate(() => {
+      const items: Array<{
+        corpus: string;
+        kind: string;
+        text: string;
+        href?: string;
+        order: number;
+      }> = [];
+      const push = (corpus: string, kind: string, text: string, href?: string) => {
+        items.push({
+          corpus,
+          kind,
+          text,
+          ...(href ? { href } : {}),
+          order: items.length,
+        });
+      };
+
+      const isHiddenSelf = (el: Element): boolean => {
+        const anyEl = el as HTMLElement;
+        if (anyEl.hidden) return true;
+        if (el.getAttribute('aria-hidden') === 'true') return true;
+        if (el.hasAttribute('inert')) return true;
+        const style = window.getComputedStyle(el);
+        if (style.display === 'none') return true;
+        if (style.visibility === 'hidden' || style.visibility === 'collapse') return true;
+        if (style.opacity === '0') return true;
+        return false;
+      };
+
+      const isHidden = (el: Element): boolean => {
+        let current: Element | null = el;
+        while (current) {
+          if (isHiddenSelf(current)) return true;
+          current = current.parentElement;
+        }
+        return false;
+      };
+
+      /** Textinhalt ohne versteckte Nachfahren. */
+      const visibleText = (el: Element): string => {
+        const parts: string[] = [];
+        const walk = (node: Node) => {
+          if (node.nodeType === Node.TEXT_NODE) {
+            parts.push(node.nodeValue || '');
+            return;
+          }
+          if (node.nodeType !== Node.ELEMENT_NODE) return;
+          const element = node as Element;
+          if (isHiddenSelf(element)) return;
+          node.childNodes.forEach(walk);
+        };
+        el.childNodes.forEach(walk);
+        return parts.join(' ');
+      };
+
+      const clean = (value: string) =>
+        String(value || '')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+      const accessibleName = (el: Element): string => {
+        const candidates: Array<string | null> = [
+          visibleText(el),
+          el.getAttribute('aria-label'),
+        ];
+
+        const labelledBy = el.getAttribute('aria-labelledby');
+        if (labelledBy) {
+          const referenced = labelledBy
+            .split(/\s+/)
+            .filter(Boolean)
+            .map((id) => {
+              const target = document.getElementById(id);
+              return target ? visibleText(target) : '';
+            })
+            .filter(Boolean);
+          candidates.push(referenced.join(' '));
+        }
+
+        candidates.push((el as HTMLInputElement).value ?? null);
+        if (el.tagName.toLowerCase() === 'input') {
+          candidates.push(el.getAttribute('alt'));
+        } else {
+          const images = el.querySelectorAll('img[alt]');
+          if (images.length === 1) candidates.push(images[0].getAttribute('alt'));
+        }
+        candidates.push(el.getAttribute('title'));
+
+        for (const candidate of candidates) {
+          const cleaned = clean(candidate || '');
+          if (cleaned) return cleaned;
+        }
+        return '';
+      };
+
+      const buttonClassTokens = new Set(['btn', 'button', 'cta']);
+      const buttonClassPrefixes = ['btn-', 'btn_', 'button-', 'cta-'];
+      const hasButtonClass = (el: Element): boolean => {
+        for (const token of Array.from(el.classList)) {
+          const lower = token.toLowerCase();
+          if (buttonClassTokens.has(lower)) return true;
+          if (buttonClassPrefixes.some((prefix) => lower.startsWith(prefix))) return true;
+        }
+        return false;
+      };
+
+      const visible = (selector: string): Element[] =>
+        Array.from(document.querySelectorAll(selector)).filter((el) => !isHidden(el));
+
+      // meta/title werden nie gerendert — keine Sichtbarkeitsprüfung.
+      push('meta', 'title', document.title || '');
+      push(
+        'meta',
+        'description',
+        document.querySelector('meta[name="description"]')?.getAttribute('content') || '',
+      );
+
+      for (const el of visible('h1, h2, h3')) {
+        push('heading', el.tagName.toLowerCase(), accessibleName(el));
+      }
+
+      const ctaSeen = new Set<Element>();
+      for (const el of visible(
+        'button, [role="button"], input[type="submit"], input[type="button"], input[type="image"], a[class]',
+      )) {
+        if (ctaSeen.has(el)) continue;
+        const tag = el.tagName.toLowerCase();
+        if (tag === 'a' && !hasButtonClass(el)) continue;
+        ctaSeen.add(el);
+        const kind = tag === 'a' ? 'link' : tag === 'input' ? 'submit' : 'button';
+        push(
+          'cta',
+          kind,
+          accessibleName(el),
+          tag === 'a' ? el.getAttribute('href') || undefined : undefined,
+        );
+      }
+
+      const navSeen = new Set<Element>();
+      for (const el of visible(
+        'nav a, nav button, [role="navigation"] a, [role="navigation"] button, [role="menuitem"]',
+      )) {
+        if (navSeen.has(el)) continue;
+        navSeen.add(el);
+        const tag = el.tagName.toLowerCase();
+        push(
+          'nav',
+          tag === 'a' ? 'link' : 'menuitem',
+          accessibleName(el),
+          tag === 'a' ? el.getAttribute('href') || undefined : undefined,
+        );
+      }
+
+      for (const form of visible('form')) {
+        for (const el of Array.from(form.querySelectorAll('label'))) {
+          if (!isHidden(el)) push('form', 'label', accessibleName(el));
+        }
+        for (const el of Array.from(form.querySelectorAll('legend'))) {
+          if (!isHidden(el)) push('form', 'legend', accessibleName(el));
+        }
+        for (const el of Array.from(form.querySelectorAll('[placeholder]'))) {
+          if (!isHidden(el))
+            push('form', 'placeholder', el.getAttribute('placeholder') || '');
+        }
+        // option: im geschlossenen select unsichtbar, aber Beschriftung.
+        for (const el of Array.from(form.querySelectorAll('option'))) {
+          push('form', 'option', el.textContent || el.getAttribute('label') || '');
+        }
+        for (const el of Array.from(
+          form.querySelectorAll(
+            'button[type="submit"], input[type="submit"], button:not([type])',
+          ),
+        )) {
+          if (!isHidden(el)) push('form', 'submit', accessibleName(el));
+        }
+      }
+
+      return {
+        lang: (document.documentElement.getAttribute('lang') || '').trim().toLowerCase(),
+        items,
+      };
+    })) as { lang: string; items: WordingRawItem[] };
+
+    return {
+      url,
+      lang: raw.lang || null,
+      collectionMode: 'playwright',
+      items: raw.items.map((item) => ({
+        ...item,
+        ...(item.href ? { href: canonicalizeHref(item.href, url) } : {}),
+      })),
     };
   } catch {
     return null;
@@ -648,6 +871,10 @@ export const capturePage = async (
   }
 
   const html = (await page.content().catch(() => null)) ?? initialHtml ?? '';
+  // Vor collectComputedSnapshot: dessen Viewport-Resizes können responsives JS
+  // den DOM umbauen lassen, dann beschriebe das Wording ein anderes Dokument als
+  // das oben gelesene HTML.
+  const wording = options.collectWording ? await collectWordingSnapshot(page, url) : null;
   const computedSnapshot = options.collectComputedSnapshot
     ? await collectComputedSnapshot(page)
     : null;
@@ -664,5 +891,6 @@ export const capturePage = async (
     contentType,
     responses,
     computedSnapshot,
+    wording,
   };
 };

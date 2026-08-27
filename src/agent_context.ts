@@ -25,6 +25,8 @@ export interface AgentContextDocument {
   generatedAt: string;
   sourceUrl: string;
   rootPage: string;
+  /** Fehlt, wenn keine wording.md geschrieben wurde. */
+  wordingFile?: string;
   totals: {
     pages: number;
     htmlBytes: number;
@@ -133,6 +135,7 @@ export const buildAgentContextDocument = (
   sourceUrl: string,
   rootPagePath: string,
   pages: AgentPageContext[],
+  wordingFile?: string | null,
 ): AgentContextDocument => {
   const sorted = [...pages].sort((a, b) => {
     if (a.depth !== b.depth) return a.depth - b.depth;
@@ -165,6 +168,7 @@ export const buildAgentContextDocument = (
     generatedAt: new Date().toISOString(),
     sourceUrl,
     rootPage: rootPagePath,
+    ...(wordingFile ? { wordingFile } : {}),
     totals,
     pages: sorted,
   };
@@ -177,21 +181,28 @@ export const renderAgentContextMarkdown = (doc: AgentContextDocument): string =>
   lines.push(`- Source URL: ${doc.sourceUrl}`);
   lines.push(`- Generated: ${doc.generatedAt}`);
   lines.push(`- Root page: ${doc.rootPage}`);
+  if (doc.wordingFile) {
+    lines.push(`- Wording: ${doc.wordingFile}`);
+  }
   lines.push(`- Pages: ${doc.totals.pages}`);
   lines.push(`- Total HTML bytes: ${doc.totals.htmlBytes}`);
   lines.push(`- Extracted inline CSS files: ${doc.totals.inlineCssExtracted}`);
   lines.push('');
   lines.push('## Start Here');
   lines.push('');
-  lines.push('1. Read root `design.md` first; it is the design contract for AI edits.');
-  lines.push('2. Open root page HTML after the design contract.');
-  lines.push(
-    '3. Use `pages[]` in `agent/context.json` to jump directly to relevant subpages.',
+  const steps = ['Read root `design.md` first; it is the design contract for AI edits.'];
+  if (doc.wordingFile) {
+    steps.push(
+      `Read root \`${doc.wordingFile}\` for existing copy (CTAs, headings, nav, forms) and the detected salutation before rewriting any text.`,
+    );
+  }
+  steps.push(
+    'Open root page HTML after the design contract.',
+    'Use `pages[]` in `agent/context.json` to jump directly to relevant subpages.',
+    'For large pages, edit `assets/css/inline/*.css` before touching giant HTML blocks.',
+    'Avoid reading `scrape-log.jsonl` unless debugging capture issues.',
   );
-  lines.push(
-    '4. For large pages, edit `assets/css/inline/*.css` before touching giant HTML blocks.',
-  );
-  lines.push('5. Avoid reading `scrape-log.jsonl` unless debugging capture issues.');
+  steps.forEach((step, index) => lines.push(`${index + 1}. ${step}`));
   lines.push('');
   lines.push('## Page Index');
   lines.push('');
